@@ -1,0 +1,9 @@
+# Auth, process launch, and deployment are the security boundary; changes need
+# code-owner approval. Enforced by "require review from Code Owners" on main.
+/src/moq_test_tracks/auth/ @gmarzot
+/src/moq_test_tracks/jobs/ @gmarzot
+/adapters/ @gmarzot
+/config/ @gmarzot
+/deploy/ @gmarzot
+/docker/ @gmarzot
+/.github/ @gmarzot

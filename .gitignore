@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+/dist/
+/build/
+
+# Runtime state and secrets (never commit)
+/var/
+*.sqlite
+*.sqlite-journal
+deploy/.env
+deploy/secrets/
+
+# OS
+.DS_Store
+
+# IDE / tools
+.vscode/
+.idea/
+.claude/
+.cache/
+AGENTS.md

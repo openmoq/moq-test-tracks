@@ -1,0 +1,18 @@
+# Relay allowlist. Jobs name a relay by id; custom URLs need the admin scope.
+default: moqx_main
+
+relays:
+  moqx_main:
+    name: moqx main (OpenMOQ CI)
+    endpoints:
+      moqt: moqt://moqx-main.ci.openmoq.org:4433
+      webtransport: https://moqx-main.ci.openmoq.org:4433/moq-relay
+    drafts: [16, 18]
+    default_draft: 18  # moqx negotiates 16 when offered both
+  moqarena:
+    name: moqarena ersatz relay (aiomoqt)
+    endpoints:
+      moqt: moqt://moqarena.marzresearch.net:4443
+      webtransport: https://moqarena.marzresearch.net:4443/
+    drafts: [14, 16, 18, 20, 22]
+    default_draft: 18

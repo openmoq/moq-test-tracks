@@ -1,0 +1,25 @@
+# Service limits. Per-key limits may lower these; only admin keys may exceed
+# the per-key defaults, never the global caps.
+namespace_prefix: [openmoq, mtt]  # tool id is appended
+
+global:
+  max_jobs: 6
+  max_live_encodes: 2
+  max_ttl_s: 86400
+
+per_key_defaults:
+  max_jobs: 2
+  default_ttl_s: 1800
+  max_ttl_s: 3600
+  max_height: 1080
+  max_fps: 60
+  max_video_kbps: 8000
+
+rate_limits:
+  api_per_min: 60
+  failed_logins_per_ip_per_hour: 10
+
+custom_relays:
+  scope: admin
+  schemes: [moqt, https]
+  allow_private_addresses: false

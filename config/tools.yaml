@@ -1,0 +1,6 @@
+# Enabled tools, read at startup. Each id has adapters/<id>/manifest.yaml.
+# Contract: docs/tool-contract.md
+tools:
+  aiomoqt:
+    runner: runner  # compose service that hosts the tool
+    max_jobs: 4
