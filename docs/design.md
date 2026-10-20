@@ -131,18 +131,19 @@ Query parameters:
 | Param | Draft field | | Param | Draft field |
 |-------|-------|-|-------|-------|
 | `cat` | 1 catalog | | `ac` | 9 audio codec |
-| `pkg` | 2 packaging | | `sr` | 10 sample rate |
-| `vc` | 3 video codec | | `ch` | 11 channels |
-| `h` | 4 height | | `abr` | 12 audio kbps |
-| `fps` | 5 frame rate | | `afpg` | 13 audio frames/group |
-| `vbr` | 6 video kbps | | `afwd` | 14 audio forwarding |
-| `gop` | 7 group ms | | `content` | 15 content |
-| `vfwd` | 8 video forwarding | | `dur` | 16 duration s |
+| `pkg` | 2 packaging | | `ch` | 10 channels |
+| `vc` | 3 video codec | | `abr` | 11 audio kbps |
+| `h` | 4 height | | `afpg` | 12 audio frames/group |
+| `fps` | 5 frame rate | | `afwd` | 13 audio forwarding |
+| `vbr` | 6 video kbps | | `content` | 14 content |
+| `gop` | 7 group ms | | `dur` | 15 duration s |
+| `vfwd` | 8 video forwarding | | | |
 
 - Alternatives to field parameters: `preset=<name>`, or `ns=` with a full
   namespace.
-- Run parameters: `tool`, `relay`, `mode` (`publish` | `publish_namespace` |
-  `both`), `draft`, `transport` (`moqt` | `webtransport`), `ttl`, `isolate`.
+- Run parameters: `tool`, `relay`, `mode` (`namespace` | `publish`), `draft`,
+  `transport` (`moqt` | `webtransport`), `ttl`, `isolate`. FORWARD is not a
+  parameter: tools send 1 and follow the relay.
 - moq-test-00 jobs take `proto=moq_test_00` plus that draft's 15 fields.
 
 Example:
@@ -162,7 +163,7 @@ Candidates, from the survey of openmoq tools:
 
 | Tool | Source | Serves |
 |------|--------|--------|
-| aiomoqt `pub_media` | `mpegts`, `annexb`, `mp4` | media: LOC / CMAF / LOCMAF, MSF / CMSF |
+| aiomoqt `pub_media` | `mpegts`, `mp4` | media: LOC / CMAF / LOCMAF, MSF / CMSF |
 | moxygen `moqtest_publisher` | — | moq-test-00 |
 | moqxr `openmoq-publisher` | `fmp4` | media: CMAF + CMSF |
 | moq5 `media_publish_loc` | `annexb` | media: LOC + MSF |
@@ -199,7 +200,7 @@ values.
 
 `requested → checked → queued → starting → running → stopping → ended | failed | expired`
 
-- Every job has a TTL, even when draft Field 16 is 0. The default and
+- Every job has a TTL, even when draft Field 15 is 0. The default and
   maximum come from policy.
 - The runner owns TTLs, and api reconciles with the runner on restart.
 - On start, the runner sweeps up orphaned process groups.
@@ -277,7 +278,7 @@ Everything is in `deploy/compose.yaml`; the host only needs Docker.
 | 1 | Namespace codec (moq_test_tracks_00 + moq-test-00) and the `mtt ns` CLI | property tests round-trip; the draft's examples parse |
 | 2 | Runner and supervisor, ffmpeg source stage, aiomoqt adapter, `mtt run` | a subscriber plays a track from moqx-main |
 | 3 | api: auth, policy, SQLite, dashboard, compose with Caddy; deploy to moq-test.ci.openmoq.org | a keyed user starts, watches and stops a job in the browser |
-| 4 | Probe subscriber (shape checks, fps, kbps, latency), `mtt tools verify`, player links | the dashboard shows the received shape per job |
+| 4 | Probe subscriber (shape checks, fps, kbps, latency), `mtt tools verify`, player links | the dashboard shows the received shape per job, and true end-to-end latency (the probe shares the generator's clock) |
 | 5 | moq-test-00 via moxygen `moqtest_publisher` | moxygen's conformance client passes against a service job |
 | 6 | On-demand responder for `openmoq/mtt/aiomoqt/moq_test_tracks_00` | a plain SUBSCRIBE starts media |
 | 7 | More tools: moqxr, moq5 | each passes `mtt tools verify` |
@@ -298,8 +299,13 @@ To raise with reviewers; these become GitHub issues once the repo is public.
 2. **Empty fields in moq-test.** MoQT forbids empty Track Namespace fields
    ("MUST contain at least one byte"), so moq-test-00's blank defaults
    break on current drafts. How should moq-test-01 handle this?
-3. **Wall-clock group numbering.** Should Group ID be the capture time
-   divided by the group duration, so that independent publishers align?
+3. **MSF stream mapping.** MSF §6 says each Object goes on a new stream;
+   most implementations use one subgroup (stream) per group. Fixes under
+   discussion: [#148](https://github.com/moq-wg/msf/issues/148),
+   [#169](https://github.com/moq-wg/msf/pull/169) (subgroup 0) and
+   [#211](https://github.com/moq-wg/msf/pull/211) (catalog `streamMapping`).
+   Tuple fields 8 and 13 exercise both mappings; if `streamMapping` lands,
+   generators set it to match.
 4. **ABR.** How should a namespace express ladders and multiple renditions?
 5. **Profile and level.** Should tuple field 3 accept codec strings as well
    as short names? Codec strings contain `.`, which the §8.8 representation
@@ -307,6 +313,6 @@ To raise with reviewers; these become GitHub issues once the repo is public.
 6. **MSF with CMAF.** MSF packaging values are `loc`, `mediatimeline`,
    `eventtimeline`, …; CMSF adds `cmaf`. Is the catalog/packaging pairing
    (msf↔loc, cmsf↔cmaf/locmaf) right?
-7. **Capture time for CMAF and LOCMAF.** prft for CMAF; what does LOCMAF
-   specify?
+7. **Timestamp mapping.** The timing relies on draft-frindell-moq-timestamp,
+   which players don't implement yet (G5 player will). Is it the right base?
 8. **Timed metadata and captions.** Should there be a field for them?
