@@ -156,17 +156,23 @@ curl -X POST -H "Authorization: Bearer $MTT_KEY" \
 ## Tools
 
 See [tool-contract.md](tool-contract.md) for the contract. The first tool is
-aiomoqt pub_media ([adapters/aiomoqt](../adapters/aiomoqt/)). Its gaps
-become asks for the aiomoqt release session as we hit them.
+aiomoqt pub_media ([adapters/aiomoqt](../adapters/aiomoqt/)), the reference
+engine: the service is complete when aiomoqt covers the draft. Its gaps
+become asks for the aiomoqt release session as we hit them. The second is
+ffmpeg with the openmoq MoQ muxer ([adapters/ffmpeg_moq](../adapters/ffmpeg_moq/)),
+which brings a second MoQ stack (libmoq) and encodes for itself. It is best
+effort: the adapter maps what the muxer supports today, and closing its open
+items is up to the FFmpeg muxer and libmoq contributors.
 
 Candidates, from the survey of openmoq tools:
 
 | Tool | Source | Serves |
 |------|--------|--------|
 | aiomoqt `pub_media` | `mpegts`, `mp4` | media: LOC / CMAF / LOCMAF, MSF / CMSF |
+| ffmpeg, [openmoq/FFmpeg](https://github.com/openmoq/FFmpeg) `-f moq` (libmoq) | — (encodes itself) | media: LOC / CMAF, MSF / CMSF; H.264, HEVC, AV1, AAC, Opus |
 | moxygen `moqtest_publisher` | — | moq-test-00 |
 | moqxr `openmoq-publisher` | `fmp4` | media: CMAF + CMSF |
-| moq5 `media_publish_loc` | `annexb` | media: LOC + MSF |
+| moq5 `media_publish_loc` | `annexb` | media: LOC + MSF; H.264 only, and libmoq like ffmpeg, so ffmpeg covers it |
 | moxygen `moqflvstreamerclient` | `flv` | media: MoqMi, no catalog (outside this draft; possibly a third protocol) |
 | moq-playa node-publisher | prepared CMAF fixture | media: CMAF, WebTransport only |
 
@@ -176,7 +182,7 @@ The OBS plugin is excluded because it needs a GUI.
 
 The runner image includes ffmpeg from Debian packages:
 
-- libx264, libx265, libsvtav1 and libvpx for video;
+- libx264, libx265 and libsvtav1 for video;
 - libopus and the native AAC encoder for audio;
 - a DejaVu font for drawtext.
 
@@ -188,6 +194,10 @@ values.
     plus a tone with a one-second beep and flash;
   - `bars`: smptehdbars with 1 kHz;
   - `noise`: a noise source and anoisesrc.
+- **Shared recipes:** one module renders the ffmpeg inputs, filters and
+  encoder arguments for each content value and field set. The source stage
+  and adapters whose tool is ffmpeg use the same module, so a content value
+  looks and compresses the same whichever tool emits it.
 - **Encoding:** `-bf 0`, `-g` and `-keyint_min` equal to fps × gop,
   `-sc_threshold 0`, realtime presets, and `-b:v -maxrate -bufsize`.
 - **Loop cache:** for `mp4` sources, a 60 s file (a whole number of groups)
@@ -281,7 +291,7 @@ Everything is in `deploy/compose.yaml`; the host only needs Docker.
 | 4 | Probe subscriber (shape checks, fps, kbps, latency), `mtt tools verify`, player links | the dashboard shows the received shape per job, and true end-to-end latency (the probe shares the generator's clock) |
 | 5 | moq-test-00 via moxygen `moqtest_publisher` | moxygen's conformance client passes against a service job |
 | 6 | On-demand responder for `openmoq/mtt/aiomoqt/moq_test_tracks_00` | a plain SUBSCRIBE starts media |
-| 7 | More tools: moqxr, moq5 | each passes `mtt tools verify` |
+| 7 | More tools: ffmpeg (libmoq), moqxr | each passes `mtt tools verify` |
 
 ## Open decisions
 
