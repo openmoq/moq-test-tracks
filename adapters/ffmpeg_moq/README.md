@@ -32,6 +32,6 @@ Not enabled in `config/tools.yaml` until the open items below are settled.
 | Capture time falls back to `av_gettime()` at write time when packets carry no `prft` side data | muxer | moqenc |
 | LOC properties are the LOC-01 profile; G5 reads LOC-04 Timestamp `0x10` | libmoq | moq5 (Raymond Lucke) |
 | No datagram path in the media sender (audio forwarding 3) | libmoq | moq5 |
-| Subgroup mapping and FORWARD are not exposed; confirm one subgroup per group and FORWARD 1 | libmoq / muxer | moq5, moqenc |
+| Confirm one subgroup per group, and that PUBLISH carries FORWARD 1 (or omits it) and honours the relay's REQUEST_UPDATE | libmoq | moq5 |
 | No timestamp mapping (TIMESCALE, TIMESTAMP_MAPPING) | libmoq | moq5 |
 | No catalog-less mode (`none`) | libmoq | moq5 |
