@@ -16,6 +16,9 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.6"]
 
+[project.scripts]
+mtt = "moq_test_tracks.cli:main"
+
 [project.urls]
 Repository = "https://github.com/openmoq/moq-test-tracks"
 
