@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+# Copyright (c) OpenMOQ contributors.
+# This source code is licensed under the Apache 2.0 license found in the
+# LICENSE file in the root directory of this source tree.
+
+# aiomoqt pub_media adapter (docs/tool-contract.md). Check mode prints the
+# plan or the refusal; run mode starts pub_media and turns its output into
+# @mtt events. Standard library only: it runs in the tool's environment.
+
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+
+EXIT_REFUSED = 64
+EXIT_UNAVAILABLE = 69
+EXIT_INTERNAL = 70
+
+_STATS = re.compile(r"^\s*\[pub (\d+):([\d.]+)\] (.*)$")
+_TRACK = re.compile(r"^([\w-]+): (\d+) obj$")
+_LOST = re.compile(r"^\s*error: (\S+?):? (?:closed: )?(.*)$")
+
+
+def plan(req, python=sys.executable):
+    """Accept with the pub_media argv and source format, or refuse with reasons."""
+    f = req["fields"]
+    reasons = []
+
+    def refuse(field, message):
+        reasons.append({"field": field, "message": message})
+
+    packaging = f["packaging"]
+    has_audio = f["audio_codec"] != "none"
+    if f["catalog"] == "none":
+        refuse("catalog", "pub_media always publishes a catalog")
+    if f["video_codec"] == "h265":
+        refuse("video_codec", "h265 is not supported yet")
+    if f["video_forwarding"] == 1:
+        refuse("video_forwarding", "one subgroup per object is not exposed yet")
+    if f["content"] == "clip":
+        refuse("content", "clip sources are not available yet")
+    if has_audio:
+        if f["audio_codec"] == "opus":
+            refuse("audio_codec", "opus is not supported in the TS and mp4 paths yet")
+        if f["audio_frames_per_group"] != 1:
+            refuse("audio_frames_per_group", "audio is one frame per group until grouping lands")
+        if packaging == "locmaf":
+            refuse("audio_frames_per_group", "LOCMAF audio is grouped by time (about 1 s)")
+        if f["audio_forwarding"] == 1:
+            refuse("audio_forwarding", "one audio subgroup per object is not exposed yet")
+    endpoints = req["endpoints"]
+    if f["audio_forwarding"] == 3:
+        if packaging != "loc":
+            refuse("audio_forwarding", "datagram audio is LOC only")
+        if any(e["transport"] != "moqt" for e in endpoints):
+            refuse("transport", "datagrams need raw QUIC (moqt://)")
+    if len({e["draft"] for e in endpoints}) != 1:
+        refuse("endpoints", "all endpoints must use the same draft")
+    if req["tls"].get("ca_file"):
+        refuse("tls", "pub_media has no CA file option")
+    if reasons:
+        return {"accept": False, "reasons": reasons}
+
+    live = packaging == "loc" and f["video_codec"] == "h264"
+    source = "mpegts" if live else "mp4"
+    path = (req.get("source") or {}).get("path", "<source>")
+    duration = f["duration_s"] or req["ttl_s"]
+    argv = [python, "-u", "-m", "aiomoqt.tools.pub_media"]
+    argv += [e["url"] for e in endpoints]
+    argv += ["-N", "/".join(req["namespace"]), "--draft", str(endpoints[0]["draft"])]
+    argv += ["-t", str(duration), "--forward", "1", "--stats", "2"]
+    argv.append("--pub-ns" if req["mode"] == "namespace" else "--pub-both")
+    if not req["tls"].get("verify", True):
+        argv.append("-k")
+    if live:
+        argv += ["--ts", path]
+    else:
+        argv += ["--mp4", path, "--loop", "--packaging", packaging]
+    if not has_audio:
+        argv.append("--no-audio")
+    elif f["audio_forwarding"] == 3:
+        argv.append("-D")
+    return {"accept": True, "source": source, "argv": argv, "notes": []}
+
+
+def translate(line, endpoints):
+    """One pub_media output line to an @mtt event, or None."""
+    text = line.strip()
+    m = _STATS.match(line)
+    if m:
+        tracks, current = {}, None
+        for part in m.group(3).split(" · "):
+            t = _TRACK.match(part)
+            if t:
+                current = tracks[t.group(1)] = {"objects": int(t.group(2))}
+            elif current is not None:
+                value, _, unit = part.partition(" ")
+                if unit == "obj/s":
+                    current["objects_per_s"] = float(value)
+                elif unit == "kbps":
+                    current["kbps"] = float(value)
+                elif value == "dropped":
+                    current["dropped"] = int(unit)
+        return {"event": "stats", "t": int(m.group(1)) * 60 + float(m.group(2)), "tracks": tracks}
+    if text == "publishing...":
+        return {"event": "ready", "endpoints": [{**e, "state": "connected"} for e in endpoints]}
+    if text == "done":
+        return {"event": "done", "reason": "ended"}
+    m = _LOST.match(line)
+    if m:
+        return {"event": "endpoint_lost", "url": m.group(1), "reason": m.group(2)}
+    return None
+
+
+def run(req):
+    p = plan(req)
+    if not p["accept"]:
+        print(json.dumps(p), file=sys.stderr)
+        return EXIT_REFUSED
+    child = subprocess.Popen(  # noqa: S603 - argv list from plan(), no shell
+        p["argv"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+    )
+    # The stop signal reaches the whole process group; pub_media handles
+    # SIGINT itself, so the adapter only waits. SIGTERM is turned into SIGINT.
+    signal.signal(signal.SIGINT, lambda *_: None)
+    signal.signal(signal.SIGTERM, lambda *_: child.send_signal(signal.SIGINT))
+    done = False
+    for line in child.stdout:
+        sys.stderr.write(line)
+        event = translate(line, req["endpoints"])
+        if event is not None:
+            done = done or event["event"] == "done"
+            print("@mtt " + json.dumps(event), flush=True)
+    rc = child.wait()
+    if not done:
+        print("@mtt " + json.dumps({"event": "done", "reason": f"exit {rc}"}), flush=True)
+    if rc == 0 or rc == -signal.SIGINT:
+        return 0
+    return EXIT_UNAVAILABLE if rc == 1 else EXIT_INTERNAL
+
+
+def main():
+    with open(os.environ["MTT_REQUEST_FILE"]) as fh:
+        req = json.load(fh)
+    mode = os.environ.get("MTT_MODE")
+    if mode == "check":
+        p = plan(req)
+        print(json.dumps(p))
+        return 0 if p["accept"] else EXIT_REFUSED
+    if mode == "run":
+        return run(req)
+    print("MTT_MODE must be check or run", file=sys.stderr)
+    return EXIT_INTERNAL
+
+
+if __name__ == "__main__":
+    sys.exit(main())
