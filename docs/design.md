@@ -156,10 +156,13 @@ curl -X POST -H "Authorization: Bearer $MTT_KEY" \
 ## Tools
 
 See [tool-contract.md](tool-contract.md) for the contract. The first tool is
-aiomoqt pub_media ([adapters/aiomoqt](../adapters/aiomoqt/)). Its gaps
+aiomoqt pub_media ([adapters/aiomoqt](../adapters/aiomoqt/)), the reference
+engine: the service is complete when aiomoqt covers the draft. Its gaps
 become asks for the aiomoqt release session as we hit them. The second is
 ffmpeg with the openmoq MoQ muxer ([adapters/ffmpeg_moq](../adapters/ffmpeg_moq/)),
-which brings a second MoQ stack (libmoq) and encodes for itself.
+which brings a second MoQ stack (libmoq) and encodes for itself. It is best
+effort: the adapter maps what the muxer supports today, and closing its open
+items is up to the FFmpeg muxer and libmoq contributors.
 
 Candidates, from the survey of openmoq tools:
 

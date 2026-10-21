@@ -7,7 +7,9 @@ and publishes, so the adapter requests no source (`sources: []`). Inputs,
 filters and encoder arguments come from the shared content recipes, so
 content matches what the source stage produces for other tools.
 
-Not enabled in `config/tools.yaml` until the open items below are settled.
+Best effort. The adapter maps what the muxer supports today; closing the
+open items below is up to the FFmpeg muxer and libmoq contributors. Not
+enabled in `config/tools.yaml` until they are settled.
 
 ## Mapping
 
