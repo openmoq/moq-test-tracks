@@ -58,7 +58,7 @@ capabilities:                      # coarse; used to grey out UI options
   video_forwarding: [0]
   audio_forwarding: [0, 3]
   audio_frames_per_group: [1]
-  content: [ts, bars, noise]
+  content: [ts, bars, noise, clip]
   transport: [moqt, webtransport]
   datagram_transport: [moqt]
   draft: [14, 16, 18, 20, 22]
@@ -123,6 +123,7 @@ No secrets are ever passed to a tool.
   "mode": "namespace",
   "ttl_s": 1800,
   "source": {"format": "mpegts", "path": "/work/j_7f3a9c/source.ts", "fifo": true, "loop": false},
+  "clip": null,
   "tls": {"verify": true, "ca_file": null}
 }
 ```
@@ -133,6 +134,10 @@ No secrets are ever passed to a tool.
   are `null`. `frame_rate` stays a string, so that `29_97` is unambiguous.
 - **`endpoints`** has one entry unless the manifest's `max_endpoints` is
   more than 1.
+- **`clip`** is set when `content` is `clip`:
+  `{"id": "bbb", "path": "/cache/clips/bbb.mp4", "attribution": "…"}`. A
+  tool that encodes for itself reads the clip from `path` and shows
+  `attribution` in the picture, as the shared recipes do.
 - **`source`** is the media the service prepared, in the format check mode
   asked for ([Source media](#source-media)). It is `null` when check mode
   asked for none. In check mode itself, `source` is always `null`.
@@ -227,7 +232,8 @@ values. Every source format guarantees:
   `fields`, with audio at 48 kHz;
 - a key frame exactly at each group boundary, no B-frames, and in-band
   parameter sets on every key frame;
-- content as specified by the draft's `content` field.
+- content as specified by the draft's `content` field; for `clip`, the
+  clip's mezzanine with its credit line in the picture.
 
 | `format` | Delivery | Notes |
 |----------|----------|-------|

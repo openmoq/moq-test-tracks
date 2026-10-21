@@ -43,8 +43,9 @@ A request has two halves:
   API: presets (`preset=720p30`) and per-parameter fallbacks fill in
   whatever the caller leaves out. The API returns the full namespace it
   built.
-- **Prefix:** `openmoq/mtt/<tool_id>`. The same shape from two tools gives
-  two comparable namespaces on one relay. An optional run field
+- **Prefix:** `openmoq/mtt/<tool_id>`, plus `/<clip_id>` when the content is
+  `clip`. The same shape from two tools gives two comparable namespaces on
+  one relay. An optional run field
   (`isolate=1` → `r_<job_id>`) keeps a job from being shared.
 - **Dedupe:** a request for a (relay, namespace) that an active job already
   publishes joins that job instead of starting a second encoder.
@@ -205,6 +206,29 @@ values.
   `/cache/<sha256>.mp4` with LRU eviction by size. This is much cheaper than
   live encoding.
 - **Slots:** live encodes have their own pool, smaller than the job pool.
+
+### Real media (`clip`)
+
+Synthetic content stays the default. For `clip`:
+
+- **Catalog of clips:** `media/sources.yaml` lists each clip: id
+  (`[a-z0-9_]+`), title, license, attribution text, official URL, SHA-256,
+  and native resolution and frame rate.
+- **Not in git:** clips run to hundreds of MB and GitHub caps files at
+  100 MB. `mtt media fetch <id>` downloads from the official URL, verifies
+  the SHA-256 and writes a mezzanine file to the runner's cache volume. An
+  image build can bake clips in.
+- **Encoding:** jobs encode from the mezzanine like any other source, live
+  or as cached loops. The clip id is the prefix field after the tool id:
+  `openmoq/mtt/<tool_id>/<clip_id>/moq_test_tracks_00/…`.
+- **Attribution:** the open films are Creative Commons Attribution, not
+  public domain. The picture carries a small credit line, the dashboard
+  lists credits, and each license is checked against the text in the
+  download.
+- **First clip:** Big Buck Bunny, preferring a native 30 or 60 fps release
+  to avoid frame-rate conversion. Sintel and Tears of Steel (24 fps) can
+  follow; Tears of Steel's license requires keeping the credit scroll, so it
+  loops in full.
 
 ## Job lifecycle
 
