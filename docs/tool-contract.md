@@ -46,7 +46,7 @@ name: aiomoqt pub_media
 repository: https://github.com/gmarzot/aiomoqt
 version: 0.12.0                    # tool version installed in the image
 protocols: [moq_test_tracks_00]    # version fields this tool can produce
-sources: [mpegts, annexb, mp4]     # formats check mode may request
+sources: [mpegts, mp4]             # formats check mode may request
 stop:
   signal: SIGINT                   # first signal sent on stop
   grace_s: 3                       # then SIGKILL
@@ -54,7 +54,7 @@ capabilities:                      # coarse; used to grey out UI options
   catalog: [msf, cmsf]
   packaging: [loc, cmaf, locmaf]
   video_codec: [h264, av1, none]
-  audio_codec: [aac, pcm, none]
+  audio_codec: [aac, none]
   video_forwarding: [0]
   audio_forwarding: [0, 3]
   audio_frames_per_group: [1]
@@ -62,7 +62,7 @@ capabilities:                      # coarse; used to grey out UI options
   transport: [moqt, webtransport]
   datagram_transport: [moqt]
   draft: [14, 16, 18, 20, 22]
-  mode: [publish, publish_namespace, both]
+  mode: [namespace, publish]
   max_endpoints: 8                 # >1 = one process publishes to several relays
 ```
 
@@ -106,21 +106,21 @@ No secrets are ever passed to a tool.
   "protocol": "moq_test_tracks_00",
   "namespace": ["openmoq", "mtt", "aiomoqt", "moq_test_tracks_00",
                 "msf", "loc", "h264", "720", "30", "2500", "2000", "0",
-                "aac", "48000", "2", "128", "1", "0", "ts", "0"],
-  "namespace_safe": "openmoq-mtt-aiomoqt-moq_test_tracks_00-msf-loc-h264-720-30-2500-2000-0-aac-48000-2-128-1-0-ts-0",
+                "aac", "2", "128", "1", "0", "ts", "0"],
+  "namespace_safe": "openmoq-mtt-aiomoqt-moq_test_tracks_00-msf-loc-h264-720-30-2500-2000-0-aac-2-128-1-0-ts-0",
   "tracks": ["catalog", "video", "audio"],
   "fields": {
     "catalog": "msf", "packaging": "loc",
     "video_codec": "h264", "video_height": 720, "video_width": 1280,
     "frame_rate": "30", "video_kbps": 2500, "group_ms": 2000, "video_forwarding": 0,
-    "audio_codec": "aac", "audio_rate": 48000, "audio_channels": 2,
+    "audio_codec": "aac", "audio_channels": 2,
     "audio_kbps": 128, "audio_frames_per_group": 1, "audio_forwarding": 0,
     "content": "ts", "duration_s": 0
   },
   "endpoints": [
     {"url": "moqt://moqx-main.ci.openmoq.org:4433", "transport": "moqt", "draft": 18}
   ],
-  "mode": "publish_namespace",
+  "mode": "namespace",
   "ttl_s": 1800,
   "source": {"format": "mpegts", "path": "/work/j_7f3a9c/source.ts", "fifo": true, "loop": false},
   "tls": {"verify": true, "ca_file": null}
@@ -156,9 +156,12 @@ These rules hold for every tool. They restate the draft operationally.
 
 | `mode` | Messages |
 |--------|----------|
-| `publish` | PUBLISH for each track, `catalog` first |
-| `publish_namespace` | PUBLISH_NAMESPACE for `namespace`, then serve SUBSCRIBE and FETCH for its tracks |
-| `both` | both of the above |
+| `namespace` | PUBLISH_NAMESPACE for `namespace`, then serve SUBSCRIBE and FETCH for its tracks |
+| `publish` | PUBLISH_NAMESPACE for `namespace`, then PUBLISH for each track, `catalog` first; also serve SUBSCRIBE and FETCH |
+
+- PUBLISH carries FORWARD 1, or omits it (the default is 1). After that,
+  follow the relay's REQUEST_UPDATE: stop sending while paused, resume
+  when told.
 
 **Catalog** (when `catalog` is `msf` or `cmsf`)
 - Publish the catalog before any media Object.
@@ -170,7 +173,8 @@ These rules hold for every tool. They restate the draft operationally.
 - Video:
   - One Object per frame. With `cmaf`, an Object is one CMAF chunk holding
     one frame.
-  - One Group per key-frame interval, starting with the key frame.
+  - One Group per key-frame interval, starting with the key frame. A Group
+    is a whole number of frames.
 - Audio: one Object per codec frame, and `audio_frames_per_group` Objects
   per Group.
 - Subgroups follow the forwarding fields: 0 = one Subgroup per Group,
@@ -178,11 +182,25 @@ These rules hold for every tool. They restate the draft operationally.
 - Audio forwarding 3 sends every audio Object as a datagram. If an Object
   doesn't fit, the tool exits with 64 rather than falling back to a stream.
 
-**Timestamps**
-- Every media Object carries its capture time: the LOC capture-timestamp
-  property for `loc` and `locmaf`, or a `prft` box for `cmaf`.
-- For live sources, capture time is taken when the frame is read. For looped
-  files, it is the send time.
+**Timing** (draft §Timing)
+- Capture time is the scheduled wall-clock time of each frame: the start
+  time of the track plus the frame's position on the frame (or audio frame)
+  cadence. It is not the time the tool happens to read or send the frame.
+- Every media track carries the TIMESCALE and TIMESTAMP_MAPPING Track
+  Properties (draft-frindell-moq-timestamp), without CLOCK_ID:
+  - video: timescale 1000 × fps (24000, 30000 or 60000 for `23_976`,
+    `29_97` and `59_94`), Object Multiplier 1000 (1001 for those rates);
+  - audio: timescale 48000, Object Multiplier = samples per frame (1024 for
+    AAC, 960 for Opus);
+  - Group Multiplier = Objects per Group × Object Multiplier; Base Group =
+    first Group ID; Base Timestamp = capture time of its first Object.
+- An Object whose capture time differs from its mapped timestamp carries
+  OBJECT_TIMESTAMP with the correction. On schedule, no per-Object timing
+  is sent.
+- `loc`: the LOC Timestamp property (0x10) is the capture time in µs since
+  the Unix epoch. Never send the LOC Timescale property (0x08).
+- `cmaf`, `locmaf`: the first Object of each Group contains a `prft` box
+  with the capture time.
 
 **Media**
 - Publish the source media as given: package it, don't transcode it. The
@@ -205,8 +223,8 @@ These rules hold for every tool. They restate the draft operationally.
 The service renders source media with ffmpeg, using only validated field
 values. Every source format guarantees:
 
-- codec, resolution, frame rate, bitrate target, sample rate and channels
-  exactly as in `fields`;
+- codec, resolution, frame rate, bitrate target and channels exactly as in
+  `fields`, with audio at 48 kHz;
 - a key frame exactly at each group boundary, no B-frames, and in-band
   parameter sets on every key frame;
 - content as specified by the draft's `content` field.
@@ -214,7 +232,7 @@ values. Every source format guarantees:
 | `format` | Delivery | Notes |
 |----------|----------|-------|
 | `mpegts` | FIFO, live | H.264/H.265 with AUDs, AAC in ADTS, or Opus |
-| `annexb` | two FIFOs, live: `video_path` (Annex B) and `audio_path` (ADTS AAC, Ogg Opus, or raw s16le PCM) | For tools that take elementary streams. A path is `null` when the namespace has no video or no audio. |
+| `annexb` | two FIFOs, live: `video_path` (Annex B) and `audio_path` (ADTS AAC or Ogg Opus) | For tools that take elementary streams. A path is `null` when the namespace has no video or no audio. |
 | `fmp4` | FIFO, live | An init segment, then one moof+mdat per frame (CMAF chunks) |
 | `flv` | FIFO, live | H.264 + AAC only |
 | `mp4` | file, `loop: true` | Non-fragmented and not interleaved. Its length is a whole number of groups, so the tool can loop it seamlessly. Cached and shared between jobs. |
