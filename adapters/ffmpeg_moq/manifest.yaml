@@ -16,7 +16,7 @@ capabilities:
   audio_codec: [aac, opus, none]
   video_forwarding: [0]
   audio_forwarding: [0]
-  content: [ts, bars, noise]
+  content: [ts, bars, noise, clip]
   transport: [moqt, webtransport]
   draft: [16, 18]
   mode: [publish]
