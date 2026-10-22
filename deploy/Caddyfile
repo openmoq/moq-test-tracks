@@ -1,0 +1,19 @@
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+{$MTT_HOSTNAMES} {
+	request_body {
+		max_size 64KB
+	}
+	reverse_proxy api:8080 {
+		# Server-sent events must not be buffered.
+		flush_interval -1
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	log
+}

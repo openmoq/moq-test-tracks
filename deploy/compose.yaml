@@ -1,0 +1,83 @@
+# moq-test-tracks: Caddy (TLS, the only published ports) -> api -> runner.
+# Secrets and hostnames come from deploy/.env (see .env.example).
+name: moq-test-tracks
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: [/tmp]
+  logging:
+    driver: json-file
+    options: {max-size: "20m", max-file: "5"}
+  restart: unless-stopped
+
+services:
+  proxy:
+    <<: *hardening
+    image: caddy:2.8.4-alpine
+    cap_add: [NET_BIND_SERVICE]
+    ports: ["80:80", "443:443"]
+    environment:
+      MTT_HOSTNAMES: ${MTT_HOSTNAMES:?set MTT_HOSTNAMES in .env}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge]
+    depends_on: [api]
+
+  api:
+    <<: *hardening
+    build: {context: .., dockerfile: docker/Dockerfile}
+    image: moq-test-tracks:local
+    command: ["api", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      MTT_RUNNER_URL: http://runner:8090
+      MTT_RUNNER_TOKEN: ${MTT_RUNNER_TOKEN:?run deploy.sh to generate secrets}
+      MTT_SESSION_SECRET: ${MTT_SESSION_SECRET:?run deploy.sh to generate secrets}
+      MTT_PUBLIC_ORIGINS: ${MTT_PUBLIC_ORIGINS:?set MTT_PUBLIC_ORIGINS in .env}
+      MTT_DB: /var/lib/mtt/api.sqlite
+      MTT_TRUST_PROXY: "1"
+    volumes: [mtt-api:/var/lib/mtt]
+    networks: [edge, internal]
+    cpus: 1
+    mem_limit: 512m
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on: [runner]
+
+  runner:
+    <<: *hardening
+    image: moq-test-tracks:local
+    command: ["runner", "--host", "0.0.0.0", "--port", "8090", "--var", "/var/lib/mtt/var"]
+    environment:
+      MTT_RUNNER_TOKEN: ${MTT_RUNNER_TOKEN:?run deploy.sh to generate secrets}
+      MTT_JOB_NICE: "10"
+    volumes: [mtt-runner:/var/lib/mtt]
+    networks: [internal, egress]
+    # Shares the host with a CI runner: half the CPUs, and jobs run at nice 10.
+    cpus: 8
+    mem_limit: 8g
+    pids_limit: 4096
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  edge: {}
+  internal: {internal: true}
+  egress: {}
+
+volumes:
+  caddy-data: {}
+  caddy-config: {}
+  mtt-api: {}
+  mtt-runner: {}
