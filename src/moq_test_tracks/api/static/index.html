@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>moq-test-tracks</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>moq-test-tracks</h1>
+    <span id="who"></span>
+    <button id="logout" type="button" hidden>Log out</button>
+  </header>
+
+  <section id="login" hidden>
+    <form id="login-form">
+      <label>API key <input id="key" type="password" autocomplete="off" required></label>
+      <button type="submit">Log in</button>
+      <p class="error" id="login-error"></p>
+    </form>
+  </section>
+
+  <main id="app" hidden>
+    <section>
+      <h2>New job</h2>
+      <form id="job-form">
+        <div class="grid">
+          <label>Preset <select id="preset"><option value="">(none)</option></select></label>
+          <label>Tool <select id="tool"></select></label>
+          <label>Relay <select id="relay"></select></label>
+          <label>Transport <select id="transport"><option>moqt</option><option>webtransport</option></select></label>
+          <label>Mode <select id="mode"><option>publish</option><option>namespace</option></select></label>
+          <label>TTL (s) <input id="ttl" type="number" min="1" placeholder="default"></label>
+        </div>
+        <fieldset>
+          <legend>Track set</legend>
+          <div class="grid">
+            <label>Catalog <select id="cat"><option value="">default</option><option>msf</option><option>cmsf</option><option>none</option></select></label>
+            <label>Packaging <select id="pkg"><option value="">default</option><option>loc</option><option>cmaf</option><option>locmaf</option></select></label>
+            <label>Content <select id="content"><option value="">default</option><option>ts</option><option>bars</option><option>noise</option></select></label>
+            <label>Duration (s) <input id="dur" type="number" min="0" placeholder="0 = until stopped"></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Video</legend>
+          <div class="grid">
+            <label>Codec <select id="vc"><option value="">default</option><option>h264</option><option>h265</option><option>av1</option><option>none</option></select></label>
+            <label>Height <select id="h"><option value="">default</option><option>180</option><option>360</option><option>480</option><option>540</option><option>720</option><option>1080</option><option>1440</option><option>2160</option></select></label>
+            <label>Frame rate <input id="fps" placeholder="30, 29_97"></label>
+            <label>kbps <input id="vbr" type="number" placeholder="by height"></label>
+            <label>Group ms <input id="gop" type="number" placeholder="2000"></label>
+            <label>Subgroups <select id="vfwd"><option value="">default</option><option value="0">per group</option><option value="1">per object</option></select></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Audio</legend>
+          <div class="grid">
+            <label>Codec <select id="ac"><option value="">default</option><option>aac</option><option>opus</option><option>none</option></select></label>
+            <label>Channels <select id="ch"><option value="">default</option><option>1</option><option>2</option></select></label>
+            <label>kbps <input id="abr" type="number" placeholder="by codec"></label>
+            <label>Frames/group <input id="afpg" type="number" min="1" placeholder="1"></label>
+            <label>Delivery <select id="afwd"><option value="">default</option><option value="0">subgroup per group</option><option value="1">subgroup per object</option><option value="3">datagram</option></select></label>
+          </div>
+        </fieldset>
+        <div class="ns">
+          <code id="ns"></code>
+          <button id="copy-ns" type="button">Copy</button>
+        </div>
+        <div class="ns"><code id="ns-safe" class="dim"></code></div>
+        <pre id="plan" hidden></pre>
+        <p class="error" id="job-error"></p>
+        <div class="actions">
+          <button id="check" type="button">Check</button>
+          <button type="submit" class="primary">Start</button>
+        </div>
+      </form>
+    </section>
+
+    <section>
+      <div class="heading">
+        <h2>Jobs</h2>
+        <label class="inline"><input id="active-only" type="checkbox" checked> active only</label>
+        <button id="stop-all" type="button" class="danger" hidden>Stop all</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>State</th><th>Namespace</th><th>Tool</th><th>Relay</th><th>Owner</th><th>Expires</th><th>Stats</th><th></th></tr>
+        </thead>
+        <tbody id="job-rows"></tbody>
+      </table>
+      <div id="log-panel" hidden>
+        <div class="heading"><h3 id="log-title"></h3><button id="log-close" type="button">Close</button></div>
+        <pre id="log"></pre>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
