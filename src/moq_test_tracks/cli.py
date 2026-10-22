@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import secrets
 import signal
 import sys
@@ -235,6 +236,30 @@ def cmd_run(args: argparse.Namespace) -> int:
     return asyncio.run(_run_job(job, args.dry_run, args.verbose))
 
 
+def cmd_runner(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from .runner.agent import create_app
+
+    token = os.environ.get("MTT_RUNNER_TOKEN", "")
+    if not token:
+        return _fail(["MTT_RUNNER_TOKEN is not set"])
+    try:
+        cfg = load_config(Path(args.root) if args.root else None)
+    except FileNotFoundError as e:
+        return _fail([str(e)])
+    var = Path(args.var) if args.var else cfg.root / "var"
+    app = create_app(
+        cfg,
+        token=token,
+        work=var / "jobs",
+        cache=var / "cache",
+        nice=int(os.environ.get("MTT_JOB_NICE", "10")),
+    )
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    return 0
+
+
 def _add_media_options(p: argparse.ArgumentParser) -> None:
     for opt, name in MEDIA_OPTIONS.items():
         p.add_argument(f"--{opt}", dest=opt, metavar="VALUE", help=name)
@@ -259,6 +284,13 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--dry-run", action="store_true", help="check only; print the plan")
     run.add_argument("-v", "--verbose", action="store_true", help="show the tool's log")
     run.set_defaults(func=cmd_run)
+
+    agent = sub.add_parser("runner", help="serve the internal runner API")
+    agent.add_argument("--host", default="127.0.0.1")
+    agent.add_argument("--port", type=int, default=8090)
+    agent.add_argument("--root", help="repository root holding config/ and adapters/")
+    agent.add_argument("--var", help="state directory for jobs and the source cache")
+    agent.set_defaults(func=cmd_runner)
 
     ns = sub.add_parser("ns", help="test namespace codec")
     ns_sub = ns.add_subparsers(dest="ns_command", required=True)
