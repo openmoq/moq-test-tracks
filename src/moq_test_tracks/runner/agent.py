@@ -14,6 +14,7 @@ import hmac
 import json
 import os
 import secrets
+import shutil
 import signal
 import time
 from collections import deque
@@ -138,8 +139,7 @@ class Registry:
                 return e
         return None
 
-    async def submit(self, body: JobIn) -> tuple[Entry, bool]:
-        """Start a job, or return the active one with the same relay and namespace."""
+    def _validate(self, body: JobIn):
         cfg = self.cfg
         tool = cfg.tools.get(body.tool)
         if tool is None:
@@ -164,6 +164,50 @@ class Registry:
         )  # fmt: skip
         if errors:
             raise Rejected(422, errors)
+        return tool, relay, namespace, decoded.spec, draft, ttl
+
+    def _job(self, body, tool, relay, namespace, spec, draft, ttl, work: Path) -> Job:
+        req = build_request(
+            f"j_{secrets.token_hex(6)}", namespace, spec, relay,
+            transport=body.transport, draft=draft, mode=body.mode, ttl_s=ttl,
+        )  # fmt: skip
+        return Job(tool, req, spec, work, self.cache, nice=self.nice)
+
+    @staticmethod
+    async def _adapter_check(job: Job) -> CheckResult:
+        try:
+            check = await job.check()
+        except JobError as e:
+            raise Rejected(500, [str(e)]) from None
+        if not check.accept:
+            reasons = [f"{r.get('field')}: {r.get('message')}" for r in check.reasons]
+            raise Rejected(422, reasons or ["refused by the adapter"])
+        return check
+
+    async def check(self, body: JobIn) -> dict:
+        """Validate and ask the adapter, without starting anything."""
+        tool, relay, namespace, spec, draft, ttl = self._validate(body)
+        existing = self._find(relay.id, namespace)
+        job = self._job(body, tool, relay, namespace, spec, draft, ttl, self.work / ".check")
+        try:
+            check = await self._adapter_check(job)
+        finally:
+            shutil.rmtree(job.dir, ignore_errors=True)
+        return {
+            "accept": True,
+            "source": check.source,
+            "plan": check.argv,
+            "notes": check.notes,
+            "namespace": to_slash(namespace),
+            "namespace_safe": render(namespace),
+            "tracks": job.request["tracks"],
+            "joins": existing.id if existing else None,
+        }
+
+    async def submit(self, body: JobIn) -> tuple[Entry, bool]:
+        """Start a job, or return the active one with the same relay and namespace."""
+        cfg = self.cfg
+        tool, relay, namespace, spec, draft, ttl = self._validate(body)
         existing = self._find(relay.id, namespace)
         if existing is not None:
             return existing, False
@@ -172,18 +216,8 @@ class Registry:
             raise Rejected(429, [f"the runner is at its limit of {cfg.policy.max_jobs} jobs"])
         if sum(1 for e in active if e.job.tool.id == tool.id) >= tool.max_jobs:
             raise Rejected(429, [f"{tool.id} is at its limit of {tool.max_jobs} jobs"])
-        req = build_request(
-            f"j_{secrets.token_hex(6)}", namespace, decoded.spec, relay,
-            transport=body.transport, draft=draft, mode=body.mode, ttl_s=ttl,
-        )  # fmt: skip
-        job = Job(tool, req, decoded.spec, self.work, self.cache, nice=self.nice)
-        try:
-            check = await job.check()
-        except JobError as e:
-            raise Rejected(500, [str(e)]) from None
-        if not check.accept:
-            reasons = [f"{r.get('field')}: {r.get('message')}" for r in check.reasons]
-            raise Rejected(422, reasons or ["refused by the adapter"])
+        job = self._job(body, tool, relay, namespace, spec, draft, ttl, self.work)
+        check = await self._adapter_check(job)
         live = sum(1 for e in active if e.check.source == "mpegts")
         if check.source == "mpegts" and live >= cfg.policy.max_live_encodes:
             limit = cfg.policy.max_live_encodes
@@ -297,6 +331,13 @@ def create_app(cfg: Config, *, token: str, work: Path, cache: Path, nice: int = 
         except Rejected as e:
             raise reject(e) from None
         return {**entry.summary(), "joined": not created}
+
+    @app.post("/check", dependencies=[Depends(auth)])
+    async def check(body: JobIn) -> dict:
+        try:
+            return await registry.check(body)
+        except Rejected as e:
+            raise reject(e) from None
 
     @app.get("/jobs", dependencies=[Depends(auth)])
     async def list_jobs(active: bool = False) -> list[dict]:
