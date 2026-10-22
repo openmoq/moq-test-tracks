@@ -163,6 +163,20 @@ def test_force_kill(client):
     assert killed["exit_code"] == 137
 
 
+def test_check_only(client):
+    r = client.post("/check", json=_job(), headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["accept"] and body["plan"] == ["fake"] and body["joins"] is None
+    assert body["namespace"] == NS and body["tracks"] == ["catalog", "video", "audio"]
+    assert client.get("/jobs", headers=AUTH).json() == []
+    started = client.post("/jobs", json=_job(), headers=AUTH).json()
+    assert client.post("/check", json=_job(), headers=AUTH).json()["joins"] == started["id"]
+    refused = client.post("/check", json=_job("bars"), headers=AUTH)
+    assert refused.status_code == 422
+    client.post("/stop-all", headers=AUTH)
+
+
 def test_unknown_job(client):
     assert client.get("/jobs/j_nope", headers=AUTH).status_code == 404
     assert client.delete("/jobs/j_nope", headers=AUTH).status_code == 404
