@@ -20,7 +20,6 @@ services:
     ports: ["80:80", "443:443"]
     environment:
       MTT_HOSTNAMES: ${MTT_HOSTNAMES:?set MTT_HOSTNAMES in .env}
-      ACME_EMAIL: ${ACME_EMAIL:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
