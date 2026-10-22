@@ -24,13 +24,13 @@ Status: the adapter turns pub_media's `[pub M:SS.sss] …` stats lines into
 
 ## Gaps
 
-Refused in check mode, or not yet conformant, until aiomoqt supports them:
+Targets aiomoqt 0.13.1, which stamps the LOC Timestamp with the scheduled
+wall-clock capture time and sends no LOC Timescale. The gaps below are
+refused in check mode, or not yet conformant, until aiomoqt supports them:
 
 | Gap | Ask for aiomoqt |
 |-----|-----------------|
 | no timestamp mapping | emit TIMESCALE and TIMESTAMP_MAPPING Track Properties, and OBJECT_TIMESTAMP corrections off schedule (draft-frindell-moq-timestamp) |
-| LOC Timestamp taken at read time (`loc.py:225`) | stamp the scheduled capture time: start + n × frame duration |
-| LOC Timescale sent per Object in self-describing mode (`loc.py:183`) | never send LOC Timescale with wall-clock timestamps |
 | no `prft` for `cmaf` / `locmaf` | `prft` with the capture time in the first Object of each Group |
 | FORWARD defaults to 0 | default to 1 |
 | catalog `none` | `--no-catalog` |
