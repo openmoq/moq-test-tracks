@@ -52,8 +52,17 @@ def _killpg(pid: int, sig: int) -> None:
 
 
 class Job:
-    def __init__(self, tool: Tool, request: dict, spec: TrackSpec, work_dir: Path, cache_dir: Path):
+    def __init__(
+        self,
+        tool: Tool,
+        request: dict,
+        spec: TrackSpec,
+        work_dir: Path,
+        cache_dir: Path,
+        nice: int = 0,
+    ):
         self.tool = tool
+        self.nice = nice
         self.request = request
         self.spec = spec
         self.dir = work_dir / request["job_id"]
@@ -80,6 +89,14 @@ class Job:
             "LANG": "C.UTF-8",
         }
 
+    def _preexec(self) -> None:
+        if self.nice:
+            os.nice(self.nice)
+
+    def _record(self, proc: asyncio.subprocess.Process) -> None:
+        with (self.dir / "pgids").open("a") as f:
+            f.write(f"{proc.pid}\n")
+
     def _write_request(self) -> None:
         self.request_file.write_text(json.dumps(self.request, indent=2))
 
@@ -94,6 +111,7 @@ class Job:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             start_new_session=True,
+            preexec_fn=self._preexec,
         )
         try:
             out, err = await asyncio.wait_for(proc.communicate(), CHECK_TIMEOUT_S)
@@ -135,7 +153,9 @@ class Job:
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=log,
                 start_new_session=True,
+                preexec_fn=self._preexec,
             )
+            self._record(self._source)
             self.request["source"] = {"format": fmt, "path": str(fifo), "fifo": True, "loop": False}
             return
         if fmt == "mp4":
@@ -152,6 +172,7 @@ class Job:
                     stdin=asyncio.subprocess.DEVNULL,
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.PIPE,
+                    preexec_fn=self._preexec,
                 )
                 _, err = await proc.communicate()
                 if proc.returncode != 0:
@@ -181,6 +202,11 @@ class Job:
         _killpg(proc.pid, self.tool.stop_signal)
         asyncio.get_running_loop().call_later(self.tool.grace_s, self._kill)
 
+    def kill(self) -> None:
+        """SIGKILL the adapter's process group now."""
+        self._stopping = True
+        self._kill()
+
     def _kill(self) -> None:
         if self._adapter is not None and self._adapter.returncode is None:
             _killpg(self._adapter.pid, signal.SIGKILL)
@@ -206,7 +232,9 @@ class Job:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             start_new_session=True,
+            preexec_fn=self._preexec,
         )
+        self._record(self._adapter)
         ttl = asyncio.get_running_loop().call_later(self.request["ttl_s"], self._expire)
         log = (self.dir / "log").open("a")
 
@@ -255,9 +283,12 @@ class Job:
         return self._finish(rc)
 
     def _finish(self, rc: int) -> int:
+        killed = self._stopping and rc == -signal.SIGKILL
         if rc < 0:
             rc = 0 if self._stopping and -rc == self.tool.stop_signal else 128 - rc
-        if self.expired and rc == EXIT_OK:
+        if killed:
+            self.state = "killed"
+        elif self.expired and rc == EXIT_OK:
             self.state = "expired"
         else:
             self.state = "ended" if rc == EXIT_OK else "failed"

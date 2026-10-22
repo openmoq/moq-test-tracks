@@ -13,3 +13,4 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 - Namespace codec for `moq_test_tracks_00` and `moq-test-00`, with the MoQT name representation, and the `mtt ns encode|decode|render` command.
 - `mtt run`: runs one job in the foreground against an allowlisted relay. It covers the content recipes (`ts`, `bars`, `noise`), live MPEG-TS and cached mp4-loop sources, the aiomoqt adapter, supervision (TTL, stop, exit codes) and `@mtt` status events.
+- `mtt runner`: the internal runner API (`/jobs` start, list, detail, stop or force-kill, event stream; `/stop-all`; `/healthz`) behind a bearer token. It re-validates every job, joins requests for an active relay and namespace, enforces the `global.max_jobs` and `max_live_encodes` policy caps, runs jobs at nice `MTT_JOB_NICE` (default 10), and on start kills process groups an earlier runner left behind.
