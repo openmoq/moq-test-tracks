@@ -37,8 +37,9 @@
         <fieldset>
           <legend>Track set</legend>
           <div class="grid">
-            <label>Catalog <select id="cat"><option value="">default</option><option>msf</option><option>cmsf</option><option>none</option></select></label>
+            <label>Catalog <select id="cat"><option value="">default</option><option>msf</option><option>none</option></select></label>
             <label>Packaging <select id="pkg"><option value="">default</option><option>loc</option><option>cmaf</option><option>locmaf</option></select></label>
+            <label>Init data <select id="init"><option value="">default</option><option>catalog</option><option>track</option><option>object</option></select></label>
             <label>Content <select id="content"><option value="">default</option><option>ts</option><option>bars</option><option>noise</option></select></label>
             <label>Duration (s) <input id="dur" type="number" min="0" placeholder="0 = until stopped"></label>
           </div>
@@ -46,7 +47,7 @@
         <fieldset>
           <legend>Video</legend>
           <div class="grid">
-            <label>Codec <select id="vc"><option value="">default</option><option>h264</option><option>h265</option><option>av1</option><option>none</option></select></label>
+            <label>Codec <select id="vc"><option value="">default</option><option value="h264">h264 (High)</option><option value="h264cb">h264cb (Constrained Baseline)</option><option>h265</option><option>av1</option><option>none</option></select></label>
             <label>Height <select id="h"><option value="">default</option><option>180</option><option>360</option><option>480</option><option>540</option><option>720</option><option>1080</option><option>1440</option><option>2160</option></select></label>
             <label>Frame rate <input id="fps" placeholder="30, 29_97"></label>
             <label>kbps <input id="vbr" type="number" placeholder="by height"></label>

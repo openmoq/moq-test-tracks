@@ -23,7 +23,7 @@ from moq_test_tracks.runner.supervisor import EXIT_OK, Job
 from moq_test_tracks.spec import decode, from_slash
 
 ROOT = Path(__file__).resolve().parents[1]
-NS = "openmoq/mtt/fake/moq_test_tracks_00/msf/loc/h264/180/30/200/1000/0/aac/2/64/1/0/ts/0"
+NS = "openmoq/mtt/fake/moq_test_tracks_00/msf/loc/catalog/h264/180/30/200/1000/0/aac/2/64/1/0/ts/0"
 RELAY = Relay("local", "local", {"moqt": "moqt://127.0.0.1:4433"}, (18,), 18)
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
 

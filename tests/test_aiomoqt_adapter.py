@@ -19,7 +19,7 @@ from moq_test_tracks.runner.request import build
 from moq_test_tracks.spec import decode, from_slash
 
 ADAPTER = Path(__file__).resolve().parents[1] / "adapters" / "aiomoqt" / "run"
-NS = "openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/h264/360/30/600/2000/0/aac/2/128/1/0/ts/0"
+NS = "openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/catalog/h264/360/30/600/2000/0/aac/2/128/1/0/ts/0"
 RELAY = Relay(
     "r", "r", {"moqt": "moqt://relay:4433", "webtransport": "https://relay:4433/moq"}, (18,), 18
 )
@@ -61,8 +61,9 @@ def test_loc_h264_is_live_ts():
 @pytest.mark.parametrize(
     "changes, source, flags",
     [
-        ({"catalog": "cmsf", "packaging": "cmaf"}, "mp4", ["--packaging", "cmaf"]),
+        ({"catalog": "msf", "packaging": "cmaf"}, "mp4", ["--packaging", "cmaf"]),
         ({"video_codec": "av1"}, "mp4", ["--packaging", "loc"]),
+        ({"video_codec": "h264cb"}, "mpegts", ["--ts", "<source>"]),
         (NO_AUDIO, "mpegts", ["--no-audio"]),
         ({"audio_forwarding": 3}, "mpegts", ["-D"]),
         ({"duration_s": 600}, "mpegts", ["-t", "600"]),
@@ -82,13 +83,15 @@ def test_namespace_mode():
 @pytest.mark.parametrize(
     "kwargs, field",
     [
-        ({"catalog": "none"}, "catalog"),
+        ({"catalog": "none", "init_data": None}, "catalog"),
+        ({"init_data": "track"}, "init_data"),
+        ({"init_data": "object"}, "init_data"),
         ({"video_codec": "h265"}, "video_codec"),
         ({"video_forwarding": 1}, "video_forwarding"),
         ({"content": "clip"}, "content"),
         ({"audio_codec": "opus", "audio_kbps": 64}, "audio_codec"),
         ({"audio_frames_per_group": 10}, "audio_frames_per_group"),
-        ({"catalog": "cmsf", "packaging": "locmaf"}, "audio_frames_per_group"),
+        ({"catalog": "msf", "packaging": "locmaf"}, "audio_frames_per_group"),
         ({"audio_forwarding": 1}, "audio_forwarding"),
         ({"audio_forwarding": 3, "transport": "webtransport"}, "transport"),
     ],

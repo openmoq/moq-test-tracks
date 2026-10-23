@@ -10,13 +10,14 @@ from __future__ import annotations
 import math
 from fractions import Fraction
 
-from ..spec.fields import FIELDS, NA, VERSION, TrackSpec, group_ms_step
+from ..spec.fields import FIELDS, NA, VERSION, TrackSpec, applies, group_ms_step
 from ..spec.namespace import decode
 
 # Query parameter -> field name (docs/design.md).
 PARAMS = {
     "cat": "catalog",
     "pkg": "packaging",
+    "init": "init_data",
     "vc": "video_codec",
     "h": "video_height",
     "fps": "frame_rate",
@@ -40,12 +41,13 @@ PRESETS = {
     "1080p30": {"h": "1080", "fps": "30"},
     "1080p60": {"h": "1080", "fps": "60"},
     "audio": {"vc": "none"},
-    "cmaf": {"cat": "cmsf", "pkg": "cmaf"},
+    "cmaf": {"pkg": "cmaf"},
 }
 
 DEFAULTS = {
     "cat": "msf",
     "pkg": "loc",
+    "init": "catalog",
     "vc": "h264",
     "h": "720",
     "fps": "30",
@@ -83,8 +85,8 @@ def resolve(params: dict[str, str], preset: str | None = None) -> TrackSpec:
     if preset is not None and preset not in PRESETS:
         raise PresetError(f"unknown preset {preset}; one of {', '.join(PRESETS)}")
     p = {**DEFAULTS, **(PRESETS.get(preset, {}) if preset else {}), **params}
-    has_video = p["vc"] != "none"
-    has_audio = p["ac"] != "none"
+    has = {"catalog": p["cat"] != "none", "video": p["vc"] != "none", "audio": p["ac"] != "none"}
+    has_video, has_audio = has["video"], has["audio"]
     if has_video:
         if "gop" not in params:
             step = group_ms_step(p["fps"]) if p["fps"].replace("_", "").isdigit() else 1
@@ -98,6 +100,5 @@ def resolve(params: dict[str, str], preset: str | None = None) -> TrackSpec:
     tokens = []
     for opt, name in PARAMS.items():
         field = next(f for f in FIELDS if f.name == name)
-        applies = field.media is None or (has_video if field.media == "video" else has_audio)
-        tokens.append(p.get(opt, NA) if applies else NA)
+        tokens.append(p.get(opt, NA) if applies(field, **has) else NA)
     return decode((b"p", VERSION.encode(), *(t.encode() for t in tokens))).spec
