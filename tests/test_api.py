@@ -112,7 +112,9 @@ def test_preset_fallbacks():
     assert not audio.has_video and audio.video_height is None
     assert presets.resolve({"h": "360", "vbr": "900"}).video_kbps == 900
     cmaf = presets.resolve({}, "cmaf")
-    assert (cmaf.catalog, cmaf.packaging) == ("cmsf", "cmaf")
+    assert (cmaf.catalog, cmaf.packaging, cmaf.init_data) == ("msf", "cmaf", "catalog")
+    assert presets.resolve({"init": "object"}).init_data == "object"
+    assert presets.resolve({"cat": "none"}).init_data is None
 
 
 def test_preset_errors():
@@ -122,6 +124,8 @@ def test_preset_errors():
         presets.resolve({}, "8k")
     with pytest.raises(ValueError):
         presets.resolve({"h": "700"})
+    with pytest.raises(ValueError):
+        presets.resolve({"init": "track"}, "cmaf")
 
 
 # keys and sessions
@@ -180,7 +184,7 @@ def test_public_endpoints(client):
     r = client.get("/api/v1/namespace", params={"preset": "360p"})
     assert r.status_code == 200
     assert r.json()["namespace"].startswith(
-        "openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/h264/360/"
+        "openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/catalog/h264/360/"
     )
     assert client.get("/api/v1/namespace", params={"h": "700"}).status_code == 422
     decoded = client.get("/api/v1/namespace/decode", params={"ns": r.json()["namespace"]})
@@ -233,7 +237,7 @@ def test_query_parameters_and_check(client, keys, stub):
 
 
 def test_namespace_prefix_is_enforced(client, keys):
-    ns = "elsewhere/x/moq_test_tracks_00/msf/loc/h264/360/30/600/2000/0/aac/2/128/1/0/ts/0"
+    ns = "elsewhere/x/moq_test_tracks_00/msf/loc/catalog/h264/360/30/600/2000/0/aac/2/128/1/0/ts/0"
     r = client.post("/api/v1/jobs", json={"namespace": ns}, headers=bearer(keys["run"]))
     assert r.status_code == 422 and "prefix must be openmoq/mtt/aiomoqt" in r.text
     ok = ns.replace("elsewhere/x", "openmoq/mtt/aiomoqt")

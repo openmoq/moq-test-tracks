@@ -25,12 +25,14 @@ from moq_test_tracks.spec import (
 )
 from moq_test_tracks.spec.fields import (
     AUDIO_CODECS,
+    CATALOG_INIT_PACKAGING,
     CATALOG_PACKAGING,
     CATALOGS,
     CONTENTS,
     DATAGRAM_PACKAGING,
     FRACTIONAL_RATES,
     HEIGHTS,
+    INIT_DATA,
     VERSION,
     VIDEO_CODECS,
     group_ms_step,
@@ -40,13 +42,16 @@ PREFIX = "openmoq/mtt/moq_test_tracks_00/"
 
 # The examples appendix of draft-marzot-moq-test-tracks.
 DRAFT_EXAMPLES = [
-    PREFIX + "msf/loc/h264/720/30/2500/2000/0/aac/2/128/1/0/ts/0",
-    PREFIX + "msf/loc/av1/1080/60/6000/2000/0/opus/2/64/1/3/ts/0",
-    PREFIX + "cmsf/cmaf/h264/720/29_97/2500/2002/0/none/_/_/_/_/ts/600",
-    PREFIX + "none/loc/none/_/_/_/_/_/opus/1/32/10/0/ts/0",
+    PREFIX + "msf/loc/catalog/h264/720/30/2500/2000/0/aac/2/128/1/0/ts/0",
+    PREFIX + "msf/loc/track/av1/1080/60/6000/2000/0/opus/2/64/1/3/ts/0",
+    PREFIX + "msf/loc/object/h264cb/360/30/600/2000/0/aac/2/128/1/0/ts/0",
+    PREFIX + "msf/cmaf/catalog/h264/720/29_97/2500/2002/0/none/_/_/_/_/ts/600",
+    PREFIX + "none/loc/_/none/_/_/_/_/_/opus/1/32/10/0/ts/0",
 ]
+CMAF_EXAMPLE = DRAFT_EXAMPLES[3]
 DRAFT_RENDERED = (
-    "openmoq-mtt-moq_test_tracks_00-msf-loc-h264-720-30-2500-2000-0-aac-2-128-1-0-ts-0--video"
+    "openmoq-mtt-moq_test_tracks_00-msf-loc-catalog-h264-720-30-2500-2000-0-aac-2-128-1-0-ts-0"
+    "--video"
 )
 
 
@@ -58,6 +63,7 @@ def _base(**changes):
     fields = dict(
         catalog="msf",
         packaging="loc",
+        init_data="catalog",
         video_codec="h264",
         video_height=720,
         frame_rate="30",
@@ -85,8 +91,8 @@ def test_draft_examples_round_trip(text):
 
 
 def test_draft_example_values():
-    spec = decode(_ns(DRAFT_EXAMPLES[2])).spec
-    assert spec.catalog == "cmsf" and spec.packaging == "cmaf"
+    spec = decode(_ns(CMAF_EXAMPLE)).spec
+    assert spec.catalog == "msf" and spec.packaging == "cmaf" and spec.init_data == "catalog"
     assert spec.frames_per_group == 60
     assert spec.video_width == 1280
     assert not spec.has_audio and spec.audio_kbps is None
@@ -101,7 +107,7 @@ def test_draft_rendered_example():
 
 
 def test_timing():
-    spec = decode(_ns(DRAFT_EXAMPLES[2])).spec
+    spec = decode(_ns(CMAF_EXAMPLE)).spec
     vt = spec.video_timing()
     assert (vt.timescale, vt.object_multiplier, vt.group_multiplier) == (30000, 1001, 60060)
     at = _base(audio_codec="opus", audio_frames_per_group=10).audio_timing()
@@ -135,24 +141,30 @@ BASE = DRAFT_EXAMPLES[0]
 @pytest.mark.parametrize(
     "text, index",
     [
-        (_replace(BASE, 4, "0720"), 4),  # leading zero
-        (_replace(BASE, 4, "+720"), 4),
-        (_replace(BASE, 4, "700"), 4),  # not a defined height
-        (_replace(BASE, 4, "_"), 4),  # applies, so not _
-        (_replace(BASE, 3, "vp9"), 3),
-        (_replace(BASE, 5, "121"), 5),
-        (_replace(BASE, 5, "29.97"), 5),
-        (_replace(BASE, 6, "49"), 6),
-        (_replace(_replace(BASE, 5, "29_97"), 7, "2000"), 7),  # not whole frames
-        (_replace(BASE, 8, "2"), 8),
-        (_replace(BASE, 10, "3"), 10),
-        (_replace(BASE, 12, "101"), 12),
-        (_replace(BASE, 13, "2"), 13),
-        (_replace(BASE, 14, "film"), 14),
-        (_replace(BASE, 15, "86401"), 15),
-        (_replace(BASE, 2, "cmaf"), 2),  # msf requires loc
-        (PREFIX + "none/loc/none/720/_/_/_/_/aac/2/128/1/0/ts/0", 4),  # n/a must be _
-        (PREFIX + "cmsf/locmaf/h264/720/30/2500/2000/0/aac/2/128/1/3/ts/0", 13),
+        (_replace(BASE, 1, "cmsf"), 1),  # CMSF is an MSF catalog
+        (_replace(BASE, 3, "inline"), 3),
+        (_replace(BASE, 3, "_"), 3),  # a catalog exists, so init data applies
+        (_replace(_replace(BASE, 2, "cmaf"), 3, "track"), 3),  # CMSF: init in the catalog
+        (PREFIX + "none/loc/catalog/h264/720/30/2500/2000/0/aac/2/128/1/0/ts/0", 3),
+        (_replace(BASE, 5, "0720"), 5),  # leading zero
+        (_replace(BASE, 5, "+720"), 5),
+        (_replace(BASE, 5, "700"), 5),  # not a defined height
+        (_replace(BASE, 5, "_"), 5),  # applies, so not _
+        (_replace(BASE, 4, "vp9"), 4),
+        (_replace(BASE, 4, "h264h"), 4),
+        (_replace(BASE, 6, "121"), 6),
+        (_replace(BASE, 6, "29.97"), 6),
+        (_replace(BASE, 7, "49"), 7),
+        (_replace(_replace(BASE, 6, "29_97"), 8, "2000"), 8),  # not whole frames
+        (_replace(BASE, 9, "2"), 9),
+        (_replace(BASE, 11, "3"), 11),
+        (_replace(BASE, 13, "101"), 13),
+        (_replace(BASE, 14, "2"), 14),
+        (_replace(BASE, 15, "film"), 15),
+        (_replace(BASE, 16, "86401"), 16),
+        (PREFIX + "none/cmaf/_/h264/720/30/2500/2000/0/aac/2/128/1/0/ts/0", 2),
+        (PREFIX + "none/loc/_/none/720/_/_/_/_/aac/2/128/1/0/ts/0", 5),  # n/a must be _
+        (PREFIX + "msf/locmaf/catalog/h264/720/30/2500/2000/0/aac/2/128/1/3/ts/0", 14),
     ],
 )
 def test_invalid_fields(text, index):
@@ -191,6 +203,12 @@ def test_check_rejects_bad_spec():
 def specs(draw):
     catalog = draw(st.sampled_from(CATALOGS))
     packaging = draw(st.sampled_from(CATALOG_PACKAGING[catalog]))
+    if catalog == "none":
+        init_data = None
+    elif packaging in CATALOG_INIT_PACKAGING:
+        init_data = "catalog"
+    else:
+        init_data = draw(st.sampled_from(INIT_DATA))
     video_codec = draw(st.sampled_from(VIDEO_CODECS))
     audio_codec = draw(st.sampled_from(AUDIO_CODECS))
     video = dict.fromkeys(
@@ -221,6 +239,7 @@ def specs(draw):
     return TrackSpec(
         catalog=catalog,
         packaging=packaging,
+        init_data=init_data,
         video_codec=video_codec,
         audio_codec=audio_codec,
         content=draw(st.sampled_from(CONTENTS)),
@@ -281,7 +300,7 @@ ENCODE_ARGS = [
     "encode",
     "--prefix",
     "openmoq/mtt",
-    "--cat", "msf", "--pkg", "loc",
+    "--cat", "msf", "--pkg", "loc", "--init", "catalog",
     "--vc", "h264", "--h", "720", "--fps", "30", "--vbr", "2500", "--gop", "2000", "--vfwd", "0",
     "--ac", "aac", "--ch", "2", "--abr", "128", "--afpg", "1", "--afwd", "0",
     "--content", "ts", "--dur", "0",
@@ -315,8 +334,8 @@ def test_cli_decode(capsys):
 
 
 def test_cli_decode_reports_field(capsys):
-    assert main(["ns", "decode", _replace(BASE, 4, "700")]) == 2
-    assert "tuple field 4 (video_height)" in capsys.readouterr().err
+    assert main(["ns", "decode", _replace(BASE, 5, "700")]) == 2
+    assert "tuple field 5 (video_height)" in capsys.readouterr().err
 
 
 def test_cli_render(capsys):

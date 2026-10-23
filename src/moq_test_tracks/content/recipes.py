@@ -68,9 +68,10 @@ def _video_encoder(spec: TrackSpec, fmt: str) -> list[str]:
     kbps = f"{spec.video_kbps}k"
     rate = ["-b:v", kbps, "-maxrate", kbps, "-bufsize", kbps]
     common = ["-r", _rate(spec.fps), "-pix_fmt", "yuv420p", "-g", str(gop), "-keyint_min", str(gop)]
-    if spec.video_codec == "h264":
+    if spec.video_codec in ("h264", "h264cb"):
+        profile = "high" if spec.video_codec == "h264" else "baseline"
         return [
-            "-c:v", "libx264", "-profile:v", "baseline", "-preset", "veryfast",
+            "-c:v", "libx264", "-profile:v", profile, "-preset", "veryfast",
             "-tune", "zerolatency", "-bf", "0", "-sc_threshold", "0",
             "-x264-params", "repeat-headers=1", *common, *rate,
         ]  # fmt: skip

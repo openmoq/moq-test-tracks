@@ -7,7 +7,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const FIELDS = ["cat", "pkg", "vc", "h", "fps", "vbr", "gop", "vfwd", "ac", "ch", "abr", "afpg", "afwd", "content", "dur"];
+const FIELDS = ["cat", "pkg", "init", "vc", "h", "fps", "vbr", "gop", "vfwd", "ac", "ch", "abr", "afpg", "afwd", "content", "dur"];
 const ACTIVE = ["requested", "checked", "starting", "running", "stopping"];
 let me = null;
 let events = null;

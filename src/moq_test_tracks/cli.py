@@ -21,13 +21,14 @@ from .config import load as load_config
 from .runner.request import build as build_request
 from .runner.supervisor import EXIT_REFUSED, Job, JobError
 from .spec import fields, moq_test
-from .spec.fields import FIELDS, NA, FieldError, NamespaceError, TrackSpec
+from .spec.fields import FIELDS, NA, FieldError, NamespaceError, TrackSpec, applies
 from .spec.namespace import decode, encode, from_slash, from_text, render, to_slash
 
 # Option names match the API's query parameters (docs/design.md).
 MEDIA_OPTIONS = {
     "cat": "catalog",
     "pkg": "packaging",
+    "init": "init_data",
     "vc": "video_codec",
     "h": "video_height",
     "fps": "frame_rate",
@@ -52,12 +53,16 @@ def _fail(errors: Sequence[FieldError | str]) -> int:
 
 def _media_tokens(args: argparse.Namespace) -> list[str]:
     given = {name: getattr(args, opt) for opt, name in MEDIA_OPTIONS.items()}
-    applies = {"video": given["video_codec"] != "none", "audio": given["audio_codec"] != "none"}
+    has = {
+        "catalog": given["catalog"] != "none",
+        "video": given["video_codec"] != "none",
+        "audio": given["audio_codec"] != "none",
+    }
     opt_of = {name: opt for opt, name in MEDIA_OPTIONS.items()}
     errors, tokens = [], []
     for field in FIELDS:
         value = given[field.name]
-        if field.media is not None and not applies[field.media]:
+        if not applies(field, **has):
             if value is not None:
                 errors.append(
                     FieldError(field.index, field.name, f"--{opt_of[field.name]} does not apply")
