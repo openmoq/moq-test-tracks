@@ -18,7 +18,7 @@ from moq_test_tracks.runner.agent import create_app, sweep_orphans
 
 TOKEN = "t0ken"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
-NS = "openmoq/mtt/fake/moq_test_tracks_00/msf/loc/h264/180/30/200/1000/0/aac/2/64/1/0/ts/0"
+NS = "openmoq/mtt/fake/moq_test_tracks_00/msf/loc/catalog/h264/180/30/200/1000/0/aac/2/64/1/0/ts/0"
 
 
 @pytest.fixture
@@ -142,7 +142,7 @@ def test_job_cap(client):
     "body, text",
     [
         (_job("bars"), "content: no"),  # the adapter refuses
-        ({**_job(), "namespace": NS.replace("/180/", "/700/")}, "tuple field 4"),
+        ({**_job(), "namespace": NS.replace("/180/", "/700/")}, "tuple field 5"),
         ({**_job(), "relay": "elsewhere"}, "not in the allowlist"),
         ({**_job(), "tool": "nope"}, "unknown or disabled tool"),
         ({**_job(), "ttl_s": 999999}, "ttl"),

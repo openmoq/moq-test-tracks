@@ -103,7 +103,7 @@ def decode(namespace: Sequence[bytes | str]) -> Decoded:
 
 
 def parse_media(tokens: list[str]) -> TrackSpec:
-    """Characteristic fields 1-15 of moq_test_tracks_00 to a validated spec."""
+    """Characteristic fields 1-16 of moq_test_tracks_00 to a validated spec."""
     errors: list[FieldError] = []
     values: dict[str, object] = {}
     for field, token in zip(FIELDS, tokens, strict=True):

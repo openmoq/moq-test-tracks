@@ -38,7 +38,7 @@ A request has two halves:
 | Track characteristics | the namespace | catalog, packaging, codec, height, fps, audio datagrams, content |
 | Run parameters | the API request only | tool, relay, mode, MoQT draft, transport, TTL |
 
-- **No defaults on the wire.** The namespace always carries all 16 fields
+- **No defaults on the wire.** The namespace always carries all 17 fields
   explicitly, so each shape has exactly one name. Convenience lives in the
   API: presets (`preset=720p30`) and per-parameter fallbacks fill in
   whatever the caller leaves out. The API returns the full namespace it
@@ -131,14 +131,14 @@ Query parameters:
 
 | Param | Draft field | | Param | Draft field |
 |-------|-------|-|-------|-------|
-| `cat` | 1 catalog | | `ac` | 9 audio codec |
-| `pkg` | 2 packaging | | `ch` | 10 channels |
-| `vc` | 3 video codec | | `abr` | 11 audio kbps |
-| `h` | 4 height | | `afpg` | 12 audio frames/group |
-| `fps` | 5 frame rate | | `afwd` | 13 audio forwarding |
-| `vbr` | 6 video kbps | | `content` | 14 content |
-| `gop` | 7 group ms | | `dur` | 15 duration s |
-| `vfwd` | 8 video forwarding | | | |
+| `cat` | 1 catalog | | `vfwd` | 9 video forwarding |
+| `pkg` | 2 packaging | | `ac` | 10 audio codec |
+| `init` | 3 init data | | `ch` | 11 channels |
+| `vc` | 4 video codec | | `abr` | 12 audio kbps |
+| `h` | 5 height | | `afpg` | 13 audio frames/group |
+| `fps` | 6 frame rate | | `afwd` | 14 audio forwarding |
+| `vbr` | 7 video kbps | | `content` | 15 content |
+| `gop` | 8 group ms | | `dur` | 16 duration s |
 
 - Alternatives to field parameters: `preset=<name>`, or `ns=` with a full
   namespace.
@@ -234,7 +234,7 @@ Synthetic content stays the default. For `clip`:
 
 `requested → checked → queued → starting → running → stopping → ended | failed | expired`
 
-- Every job has a TTL, even when draft Field 15 is 0. The default and
+- Every job has a TTL, even when draft Field 16 is 0. The default and
   maximum come from policy.
 - The runner owns TTLs, and api reconciles with the runner on restart.
 - On start, the runner sweeps up orphaned process groups.
@@ -338,15 +338,15 @@ To raise with reviewers; these become GitHub issues once the repo is public.
    discussion: [#148](https://github.com/moq-wg/msf/issues/148),
    [#169](https://github.com/moq-wg/msf/pull/169) (subgroup 0) and
    [#211](https://github.com/moq-wg/msf/pull/211) (catalog `streamMapping`).
-   Tuple fields 8 and 13 exercise both mappings; if `streamMapping` lands,
+   Tuple fields 9 and 14 exercise both mappings; if `streamMapping` lands,
    generators set it to match.
 4. **ABR.** How should a namespace express ladders and multiple renditions?
-5. **Profile and level.** Should tuple field 3 accept codec strings as well
+5. **Profile and level.** Should tuple field 4 accept codec strings as well
    as short names? Codec strings contain `.`, which the §8.8 representation
    escapes.
-6. **MSF with CMAF.** MSF packaging values are `loc`, `mediatimeline`,
-   `eventtimeline`, …; CMSF adds `cmaf`. Is the catalog/packaging pairing
-   (msf↔loc, cmsf↔cmaf/locmaf) right?
+6. **MSF with CMAF.** CMSF extends MSF with `cmaf` packaging and has no
+   catalog marker of its own, so catalog `msf` covers both and the
+   packaging field selects the CMSF extensions. Is that enough for players?
 7. **Timestamp mapping.** The timing relies on draft-frindell-moq-timestamp,
    which players don't implement yet (G5 player will). Is it the right base?
 8. **Timed metadata and captions.** Should there be a field for them?

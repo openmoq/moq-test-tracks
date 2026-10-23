@@ -51,9 +51,10 @@ stop:
   signal: SIGINT                   # first signal sent on stop
   grace_s: 3                       # then SIGKILL
 capabilities:                      # coarse; used to grey out UI options
-  catalog: [msf, cmsf]
+  catalog: [msf]
+  init_data: [catalog]
   packaging: [loc, cmaf, locmaf]
-  video_codec: [h264, av1, none]
+  video_codec: [h264, h264cb, av1, none]
   audio_codec: [aac, none]
   video_forwarding: [0]
   audio_forwarding: [0, 3]
@@ -105,12 +106,12 @@ No secrets are ever passed to a tool.
   "job_id": "j_7f3a9c",
   "protocol": "moq_test_tracks_00",
   "namespace": ["openmoq", "mtt", "aiomoqt", "moq_test_tracks_00",
-                "msf", "loc", "h264", "720", "30", "2500", "2000", "0",
+                "msf", "loc", "catalog", "h264", "720", "30", "2500", "2000", "0",
                 "aac", "2", "128", "1", "0", "ts", "0"],
-  "namespace_safe": "openmoq-mtt-aiomoqt-moq_test_tracks_00-msf-loc-h264-720-30-2500-2000-0-aac-2-128-1-0-ts-0",
+  "namespace_safe": "openmoq-mtt-aiomoqt-moq_test_tracks_00-msf-loc-catalog-h264-720-30-2500-2000-0-aac-2-128-1-0-ts-0",
   "tracks": ["catalog", "video", "audio"],
   "fields": {
-    "catalog": "msf", "packaging": "loc",
+    "catalog": "msf", "packaging": "loc", "init_data": "catalog",
     "video_codec": "h264", "video_height": 720, "video_width": 1280,
     "frame_rate": "30", "video_kbps": 2500, "group_ms": 2000, "video_forwarding": 0,
     "audio_codec": "aac", "audio_channels": 2,
@@ -168,10 +169,16 @@ These rules hold for every tool. They restate the draft operationally.
   follow the relay's REQUEST_UPDATE: stop sending while paused, resume
   when told.
 
-**Catalog** (when `catalog` is `msf` or `cmsf`)
+**Catalog** (when `catalog` is `msf`)
 - Publish the catalog before any media Object.
 - The catalog lists exactly the published media tracks, with codec strings
-  and parameters that match `fields`, and `initData` for CMAF and LOCMAF.
+  and parameters that match `fields`. With `cmaf` or `locmaf` packaging it
+  uses the CMSF extensions.
+- Carry decoder initialization data only where `init_data` says:
+  - `catalog`: inline in the catalog's initialization data list;
+  - `track`: in the VIDEO_CONFIG or AUDIO_CONFIG Track Property;
+  - `object`: in the VIDEO_CONFIG or AUDIO_CONFIG Object Property on the
+    first Object of each Group.
 - The tool may republish the catalog as a new Group, unchanged or updated.
 
 **Objects and Groups**

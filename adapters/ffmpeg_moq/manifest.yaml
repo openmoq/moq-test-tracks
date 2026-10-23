@@ -10,9 +10,10 @@ stop:
   signal: SIGINT
   grace_s: 3
 capabilities:
-  catalog: [msf, cmsf]
+  catalog: [msf]
+  init_data: [catalog]
   packaging: [loc, cmaf]
-  video_codec: [h264, h265, av1, none]
+  video_codec: [h264, h264cb, h265, av1, none]
   audio_codec: [aac, opus, none]
   video_forwarding: [0]
   audio_forwarding: [0]

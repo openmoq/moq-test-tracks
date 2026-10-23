@@ -14,9 +14,10 @@ from fractions import Fraction
 VERSION = "moq_test_tracks_00"
 NA = "_"
 
-CATALOGS = ("msf", "cmsf", "none")
+CATALOGS = ("msf", "none")
 PACKAGINGS = ("loc", "cmaf", "locmaf")
-VIDEO_CODECS = ("h264", "h265", "av1", "none")
+INIT_DATA = ("catalog", "track", "object")
+VIDEO_CODECS = ("h264", "h264cb", "h265", "av1", "none")
 HEIGHTS = (180, 360, 480, 540, 720, 1080, 1440, 2160)
 FRACTIONAL_RATES = {
     "23_976": Fraction(24000, 1001),
@@ -26,7 +27,8 @@ FRACTIONAL_RATES = {
 AUDIO_CODECS = ("aac", "opus", "none")
 CONTENTS = ("ts", "bars", "noise", "clip")
 
-CATALOG_PACKAGING = {"msf": ("loc",), "cmsf": ("cmaf", "locmaf"), "none": ("loc",)}
+CATALOG_PACKAGING = {"msf": ("loc", "cmaf", "locmaf"), "none": ("loc",)}
+CATALOG_INIT_PACKAGING = ("cmaf", "locmaf")  # CMSF: CMAF headers go inline in the catalog
 DATAGRAM_PACKAGING = ("loc", "cmaf")
 DATAGRAM = 3
 
@@ -101,26 +103,31 @@ def _frame_rate(token: str) -> str:
 class Field:
     index: int
     name: str
-    media: str | None  # "video" or "audio": the field applies only when that track exists
+    needs: str | None  # "catalog", "video" or "audio": applies only when that track exists
     parse: Callable[[str], object]
+
+
+def applies(field: Field, *, catalog: bool, video: bool, audio: bool) -> bool:
+    return field.needs is None or {"catalog": catalog, "video": video, "audio": audio}[field.needs]
 
 
 FIELDS = (
     Field(1, "catalog", None, _tokens(CATALOGS)),
     Field(2, "packaging", None, _tokens(PACKAGINGS)),
-    Field(3, "video_codec", None, _tokens(VIDEO_CODECS)),
-    Field(4, "video_height", "video", _int_choices(HEIGHTS)),
-    Field(5, "frame_rate", "video", _frame_rate),
-    Field(6, "video_kbps", "video", _int_range(50, 50000)),
-    Field(7, "group_ms", "video", _int_range(100, 10000)),
-    Field(8, "video_forwarding", "video", _int_choices((0, 1))),
-    Field(9, "audio_codec", None, _tokens(AUDIO_CODECS)),
-    Field(10, "audio_channels", "audio", _int_choices((1, 2))),
-    Field(11, "audio_kbps", "audio", _int_range(8, 512)),
-    Field(12, "audio_frames_per_group", "audio", _int_range(1, 100)),
-    Field(13, "audio_forwarding", "audio", _int_choices((0, 1, DATAGRAM))),
-    Field(14, "content", None, _tokens(CONTENTS)),
-    Field(15, "duration_s", None, _int_range(0, 86400)),
+    Field(3, "init_data", "catalog", _tokens(INIT_DATA)),
+    Field(4, "video_codec", None, _tokens(VIDEO_CODECS)),
+    Field(5, "video_height", "video", _int_choices(HEIGHTS)),
+    Field(6, "frame_rate", "video", _frame_rate),
+    Field(7, "video_kbps", "video", _int_range(50, 50000)),
+    Field(8, "group_ms", "video", _int_range(100, 10000)),
+    Field(9, "video_forwarding", "video", _int_choices((0, 1))),
+    Field(10, "audio_codec", None, _tokens(AUDIO_CODECS)),
+    Field(11, "audio_channels", "audio", _int_choices((1, 2))),
+    Field(12, "audio_kbps", "audio", _int_range(8, 512)),
+    Field(13, "audio_frames_per_group", "audio", _int_range(1, 100)),
+    Field(14, "audio_forwarding", "audio", _int_choices((0, 1, DATAGRAM))),
+    Field(15, "content", None, _tokens(CONTENTS)),
+    Field(16, "duration_s", None, _int_range(0, 86400)),
 )
 
 
@@ -137,6 +144,7 @@ class Timing:
 class TrackSpec:
     catalog: str
     packaging: str
+    init_data: str | None
     video_codec: str
     video_height: int | None
     frame_rate: str | None
@@ -152,6 +160,10 @@ class TrackSpec:
     duration_s: int
 
     @property
+    def has_catalog(self) -> bool:
+        return self.catalog != "none"
+
+    @property
     def has_video(self) -> bool:
         return self.video_codec != "none"
 
@@ -161,7 +173,7 @@ class TrackSpec:
 
     @property
     def tracks(self) -> tuple[str, ...]:
-        names = [] if self.catalog == "none" else ["catalog"]
+        names = ["catalog"] if self.has_catalog else []
         if self.has_video:
             names.append("video")
         if self.has_audio:
@@ -206,10 +218,7 @@ def check(spec: TrackSpec) -> list[FieldError]:
     errors: list[FieldError] = []
     for field in FIELDS:
         value = getattr(spec, field.name)
-        applies = field.media is None or (
-            spec.has_video if field.media == "video" else spec.has_audio
-        )
-        if not applies:
+        if not applies(field, catalog=spec.has_catalog, video=spec.has_video, audio=spec.has_audio):
             if value is not None:
                 errors.append(FieldError(field.index, field.name, "must be _ (does not apply)"))
             continue
@@ -232,10 +241,14 @@ def _cross_checks(spec: TrackSpec) -> list[FieldError]:
         errors.append(
             FieldError(2, "packaging", f"catalog {spec.catalog} requires packaging {allowed}")
         )
+    if spec.packaging in CATALOG_INIT_PACKAGING and spec.init_data not in (None, "catalog"):
+        errors.append(
+            FieldError(3, "init_data", f"{spec.packaging} carries init data in the catalog")
+        )
     if spec.frames_per_group is not None and spec.frames_per_group.denominator != 1:
         errors.append(
             FieldError(
-                7,
+                8,
                 "group_ms",
                 f"{spec.group_ms} ms is not a whole number of frames at {spec.frame_rate}",
             )
@@ -243,7 +256,7 @@ def _cross_checks(spec: TrackSpec) -> list[FieldError]:
     if spec.audio_forwarding == DATAGRAM and spec.packaging not in DATAGRAM_PACKAGING:
         errors.append(
             FieldError(
-                13, "audio_forwarding", f"datagram requires loc or cmaf, not {spec.packaging}"
+                14, "audio_forwarding", f"datagram requires loc or cmaf, not {spec.packaging}"
             )
         )
     return errors
