@@ -200,3 +200,17 @@ def test_job_errors(fake_tool):
         "ttl 7200",
     ):
         assert expected in text
+    admin = " | ".join(
+        job_errors(
+            caps,
+            RELAY,
+            dataclasses.replace(spec, video_height=1080, video_kbps=5000),
+            mode="namespace",
+            transport="moqt",
+            draft=18,
+            ttl_s=7200,
+            policy=policy,
+            admin=True,
+        )  # fmt: skip
+    )
+    assert "exceeds" not in admin and "ttl" not in admin

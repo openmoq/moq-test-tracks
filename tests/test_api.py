@@ -212,6 +212,12 @@ def test_roles(client, keys, stub):
     run_id = auth.parse(keys["run"])[0]
     assert stub.posted[-1]["owner"] == run_id and job["owner_name"] == "run-user"
     assert stub.posted[-1]["relay"] == "moqx_main" and stub.posted[-1]["mode"] == "publish"
+    assert stub.posted[-1]["admin"] is False
+    forged = {"preset": "360p", "admin": True}
+    client.post("/api/v1/jobs", json=forged, headers=bearer(keys["run"]))
+    assert stub.posted[-1]["admin"] is False  # only the caller's role sets it
+    client.post("/api/v1/jobs", json={"preset": "360p"}, headers=bearer(keys["admin"]))
+    assert stub.posted[-1]["admin"] is True
     other = auth.new_key(client.app.state.db, "other", "run")
     assert client.delete(f"/api/v1/jobs/{job['id']}", headers=bearer(other)).status_code == 403
     assert (
@@ -223,7 +229,7 @@ def test_roles(client, keys, stub):
     assert client.post("/api/v1/admin/stop-all", headers=bearer(keys["run"])).status_code == 403
     assert client.post("/api/v1/admin/stop-all", headers=bearer(keys["admin"])).status_code == 200
     actions = [r["action"] for r in client.app.state.db.query("SELECT action FROM audit")]
-    assert actions.count("job_started") == 1 and "stop_all" in actions
+    assert actions.count("job_started") == 3 and "stop_all" in actions
 
 
 def test_query_parameters_and_check(client, keys, stub):

@@ -54,6 +54,7 @@ class Policy:
     max_video_kbps: int
     max_jobs: int = 6
     max_live_encodes: int = 2
+    global_max_ttl_s: int = 86400
 
 
 @dataclass(frozen=True)
@@ -124,6 +125,7 @@ def load(root: Path | None = None) -> Config:
         max_video_kbps=int(per_key.get("max_video_kbps", 8000)),
         max_jobs=int(caps.get("max_jobs", 6)),
         max_live_encodes=int(caps.get("max_live_encodes", 2)),
+        global_max_ttl_s=int(caps.get("max_ttl_s", 86400)),
     )
     return Config(root, relays, relays_doc.get("default", next(iter(relays))), tools, policy)
 
@@ -138,8 +140,10 @@ def job_errors(
     draft: int,
     ttl_s: int,
     policy: Policy,
+    admin: bool = False,
 ) -> list[str]:
-    """Reasons a job is out of bounds before the adapter is asked."""
+    """Reasons a job is out of bounds before the adapter is asked. Admin jobs
+    may exceed the per-key limits, never the global caps."""
     errors = []
     if mode not in MODES:
         errors.append(f"mode {mode} is not one of {', '.join(MODES)}")
@@ -161,12 +165,16 @@ def job_errors(
         "datagram_transport", caps.get("transport", [transport])
     ):
         errors.append(f"{tool.id} does not send datagrams over {transport}")
-    if spec.video_height is not None and spec.video_height > policy.max_height:
-        errors.append(f"height {spec.video_height} exceeds the cap {policy.max_height}")
-    if spec.fps is not None and spec.fps > Fraction(policy.max_fps):
-        errors.append(f"frame rate {spec.frame_rate} exceeds the cap {policy.max_fps}")
-    if spec.video_kbps is not None and spec.video_kbps > policy.max_video_kbps:
-        errors.append(f"video bitrate {spec.video_kbps} exceeds the cap {policy.max_video_kbps}")
-    if not 1 <= ttl_s <= policy.max_ttl_s:
-        errors.append(f"ttl {ttl_s} s is outside 1-{policy.max_ttl_s}")
+    if not admin:
+        if spec.video_height is not None and spec.video_height > policy.max_height:
+            errors.append(f"height {spec.video_height} exceeds the cap {policy.max_height}")
+        if spec.fps is not None and spec.fps > Fraction(policy.max_fps):
+            errors.append(f"frame rate {spec.frame_rate} exceeds the cap {policy.max_fps}")
+        if spec.video_kbps is not None and spec.video_kbps > policy.max_video_kbps:
+            errors.append(
+                f"video bitrate {spec.video_kbps} exceeds the cap {policy.max_video_kbps}"
+            )
+    max_ttl = policy.global_max_ttl_s if admin else policy.max_ttl_s
+    if not 1 <= ttl_s <= max_ttl:
+        errors.append(f"ttl {ttl_s} s is outside 1-{max_ttl}")
     return errors

@@ -280,11 +280,12 @@ def create_app(
 
     @app.post("/api/v1/jobs/check")
     async def check(request: Request, p: Principal = as_run) -> dict:
-        return await call_runner("POST", "/check", json=await job_body(request))
+        body = {**await job_body(request), "admin": p.can("admin")}
+        return await call_runner("POST", "/check", json=body)
 
     @app.post("/api/v1/jobs", status_code=201)
     async def start(request: Request, p: Principal = as_run) -> dict:
-        body = {**await job_body(request), "owner": p.key_id}
+        body = {**await job_body(request), "owner": p.key_id, "admin": p.can("admin")}
         job = await call_runner("POST", "/jobs", json=body)
         action = "job_joined" if job.get("joined") else "job_started"
         db.audit(action, p.key_id, client_ip(request), f"{job['id']} {job['namespace']}")

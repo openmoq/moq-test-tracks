@@ -48,6 +48,7 @@ class JobIn(BaseModel):
     mode: str = "publish"
     ttl_s: int | None = None
     owner: str | None = None
+    admin: bool = False  # set by the api service from the caller's role
 
 
 class Rejected(Exception):
@@ -160,7 +161,7 @@ class Registry:
         ttl = body.ttl_s or cfg.policy.default_ttl_s
         errors = job_errors(
             tool, relay, decoded.spec, mode=body.mode, transport=body.transport, draft=draft,
-            ttl_s=ttl, policy=cfg.policy,
+            ttl_s=ttl, policy=cfg.policy, admin=body.admin,
         )  # fmt: skip
         if errors:
             raise Rejected(422, errors)
