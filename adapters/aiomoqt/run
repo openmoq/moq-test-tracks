@@ -4,12 +4,12 @@
 # LICENSE file in the root directory of this source tree.
 
 # aiomoqt pub_media adapter (docs/tool-contract.md). Check mode prints the
-# plan or the refusal; run mode starts pub_media and turns its output into
-# @mtt events. Standard library only: it runs in the tool's environment.
+# plan or the refusal; run mode starts pub_media, passes its @mtt events
+# through and logs the rest. Standard library only: it runs in the tool's
+# environment.
 
 import json
 import os
-import re
 import signal
 import subprocess
 import sys
@@ -17,10 +17,6 @@ import sys
 EXIT_REFUSED = 64
 EXIT_UNAVAILABLE = 69
 EXIT_INTERNAL = 70
-
-_STATS = re.compile(r"^\s*\[pub (\d+):([\d.]+)\] (.*)$")
-_TRACK = re.compile(r"^([\w-]+): (\d+) obj$")
-_LOST = re.compile(r"^\s*error: (\S+?):? (?:closed: )?(.*)$")
 
 
 def plan(req, python=sys.executable):
@@ -35,23 +31,14 @@ def plan(req, python=sys.executable):
     has_audio = f["audio_codec"] != "none"
     if f["catalog"] == "none":
         refuse("catalog", "pub_media always publishes a catalog")
-    if f["video_codec"] == "h265":
-        refuse("video_codec", "h265 is not supported yet")
-    if f["video_forwarding"] == 1:
-        refuse("video_forwarding", "one subgroup per object is not exposed yet")
+    if f["video_forwarding"] == 1 and packaging == "locmaf":
+        refuse("video_forwarding", "LOCMAF has one subgroup per group")
     if f["content"] == "clip":
         refuse("content", "clip sources are not available yet")
     if f["init_data"] in ("track", "object"):
         refuse("init_data", "init data carriage is not selectable yet (catalog only)")
-    if has_audio:
-        if f["audio_codec"] == "opus":
-            refuse("audio_codec", "opus is not supported in the TS and mp4 paths yet")
-        if f["audio_frames_per_group"] != 1:
-            refuse("audio_frames_per_group", "audio is one frame per group until grouping lands")
-        if packaging == "locmaf":
-            refuse("audio_frames_per_group", "LOCMAF audio is grouped by time (about 1 s)")
-        if f["audio_forwarding"] == 1:
-            refuse("audio_forwarding", "one audio subgroup per object is not exposed yet")
+    if has_audio and f["audio_forwarding"] == 1 and packaging == "locmaf":
+        refuse("audio_forwarding", "LOCMAF has one subgroup per group")
     endpoints = req["endpoints"]
     if f["audio_forwarding"] == 3:
         if packaging != "loc":
@@ -72,7 +59,8 @@ def plan(req, python=sys.executable):
     argv = [python, "-u", "-m", "aiomoqt.tools.pub_media"]
     argv += [e["url"] for e in endpoints]
     argv += ["-N", "/".join(req["namespace"]), "--draft", str(endpoints[0]["draft"])]
-    argv += ["-t", str(duration), "--forward", "1", "--stats", "2"]
+    argv += ["-t", str(duration), "--forward", "1", "--stats", "2", "--stats-json"]
+    argv.append("--timestamp-mapping")
     argv.append("--pub-ns" if req["mode"] == "namespace" else "--pub-both")
     if not req["tls"].get("verify", True):
         argv.append("-k")
@@ -80,10 +68,16 @@ def plan(req, python=sys.executable):
         argv += ["--ts", path]
     else:
         argv += ["--mp4", path, "--loop", "--packaging", packaging]
+    if f["video_forwarding"] == 1:
+        argv += ["--video-subgroups", "object"]
     if not has_audio:
         argv.append("--no-audio")
-    elif f["audio_forwarding"] == 3:
-        argv.append("-D")
+    else:
+        argv += ["--audio-frames-per-group", str(f["audio_frames_per_group"])]
+        if f["audio_forwarding"] == 1:
+            argv += ["--audio-subgroups", "object"]
+        elif f["audio_forwarding"] == 3:
+            argv.append("-D")
     notes = []
     if f["init_data"] == "catalog":
         notes.append(
@@ -92,42 +86,14 @@ def plan(req, python=sys.executable):
     return {"accept": True, "source": source, "argv": argv, "notes": notes}
 
 
-def translate(line, endpoints):
-    """One pub_media output line to an @mtt event, or None."""
-    text = line.strip()
-    m = _STATS.match(line)
-    if m:
-        tracks, current = {}, None
-        for part in m.group(3).split(" · "):
-            t = _TRACK.match(part)
-            if t:
-                current = tracks[t.group(1)] = {"objects": int(t.group(2))}
-            elif current is not None:
-                value, _, unit = part.partition(" ")
-                if unit == "obj/s":
-                    current["objects_per_s"] = float(value)
-                elif unit == "kbps":
-                    current["kbps"] = float(value)
-                elif value == "dropped":
-                    current["dropped"] = int(unit)
-        return {"event": "stats", "t": int(m.group(1)) * 60 + float(m.group(2)), "tracks": tracks}
-    if text == "publishing...":
-        return {"event": "ready", "endpoints": [{**e, "state": "connected"} for e in endpoints]}
-    if text == "done":
-        return {"event": "done", "reason": "ended"}
-    m = _LOST.match(line)
-    if m:
-        return {"event": "endpoint_lost", "url": m.group(1), "reason": m.group(2)}
-    return None
-
-
 def run(req):
     p = plan(req)
     if not p["accept"]:
         print(json.dumps(p), file=sys.stderr)
         return EXIT_REFUSED
+    # pub_media writes @mtt events on stdout and its log on stderr.
     child = subprocess.Popen(  # noqa: S603 - argv list from plan(), no shell
-        p["argv"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+        p["argv"], stdout=subprocess.PIPE, text=True, bufsize=1
     )
     # The stop signal reaches the whole process group; pub_media handles
     # SIGINT itself, so the adapter only waits. SIGTERM is turned into SIGINT.
@@ -135,17 +101,32 @@ def run(req):
     signal.signal(signal.SIGTERM, lambda *_: child.send_signal(signal.SIGINT))
     done = False
     for line in child.stdout:
-        sys.stderr.write(line)
-        event = translate(line, req["endpoints"])
-        if event is not None:
-            done = done or event["event"] == "done"
-            print("@mtt " + json.dumps(event), flush=True)
+        event = _event(line)
+        if event is None:
+            sys.stderr.write(line)
+            continue
+        done = done or event.get("event") == "done"
+        sys.stdout.write(line)
+        sys.stdout.flush()
     rc = child.wait()
     if not done:
         print("@mtt " + json.dumps({"event": "done", "reason": f"exit {rc}"}), flush=True)
     if rc == 0 or rc == -signal.SIGINT:
         return 0
+    if rc == EXIT_REFUSED:  # a datagram Object did not fit
+        return EXIT_REFUSED
     return EXIT_UNAVAILABLE if rc == 1 else EXIT_INTERNAL
+
+
+def _event(line):
+    """The JSON of an @mtt line, or None for log output."""
+    if not line.startswith("@mtt "):
+        return None
+    try:
+        event = json.loads(line[5:])
+    except ValueError:
+        return None
+    return event if isinstance(event, dict) else None
 
 
 def main():

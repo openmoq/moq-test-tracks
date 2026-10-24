@@ -8,8 +8,7 @@ RUN apt-get update \
 WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-# aiomoqt pinned by commit until 0.13.1 is on PyPI.
-ARG AIOMOQT="aiomoqt @ git+https://github.com/gmarzot/aiomoqt@f6a2763f3a0e91739bca7321994ccc40f9efde29"
+ARG AIOMOQT="aiomoqt==0.13.2"
 RUN pip wheel --no-cache-dir --wheel-dir /wheels . "${AIOMOQT}"
 
 FROM python:3.12-slim-bookworm

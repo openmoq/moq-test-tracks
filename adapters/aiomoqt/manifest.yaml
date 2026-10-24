@@ -3,21 +3,20 @@ contract_version: 1
 id: aiomoqt
 name: aiomoqt pub_media
 repository: https://github.com/gmarzot/aiomoqt
-version: 0.12.0
+version: 0.13.2
 protocols: [moq_test_tracks_00]
 sources: [mpegts, mp4]
 stop:
-  signal: SIGINT  # pub_media has no SIGTERM handler
+  signal: SIGINT
   grace_s: 3
 capabilities:
   catalog: [msf]
   init_data: [catalog]
   packaging: [loc, cmaf, locmaf]
-  video_codec: [h264, h264cb, av1, none]
-  audio_codec: [aac, none]
-  video_forwarding: [0]
-  audio_forwarding: [0, 3]
-  audio_frames_per_group: [1]
+  video_codec: [h264, h264cb, h265, av1, none]
+  audio_codec: [aac, opus, none]
+  video_forwarding: [0, 1]
+  audio_forwarding: [0, 1, 3]
   transport: [moqt, webtransport]
   datagram_transport: [moqt]
   draft: [14, 16, 18, 20, 22]

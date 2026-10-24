@@ -8,7 +8,9 @@ import dataclasses
 import importlib.util
 import json
 import os
+import signal
 import subprocess
+import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
@@ -56,14 +58,23 @@ def test_loc_h264_is_live_ts():
     assert argv[argv.index("--forward") + 1] == "1"
     assert "--pub-both" in argv and argv[argv.index("--ts") + 1] == "<source>"
     assert "-D" not in argv and "--no-audio" not in argv
+    assert "--timestamp-mapping" in argv and "--stats-json" in argv
+    assert argv[argv.index("--audio-frames-per-group") + 1] == "1"
+    assert "--video-subgroups" not in argv and "--audio-subgroups" not in argv
 
 
 @pytest.mark.parametrize(
     "changes, source, flags",
     [
         ({"catalog": "msf", "packaging": "cmaf"}, "mp4", ["--packaging", "cmaf"]),
+        ({"packaging": "locmaf"}, "mp4", ["--packaging", "locmaf"]),
         ({"video_codec": "av1"}, "mp4", ["--packaging", "loc"]),
+        ({"video_codec": "h265"}, "mp4", ["--packaging", "loc"]),
         ({"video_codec": "h264cb"}, "mpegts", ["--ts", "<source>"]),
+        ({"audio_codec": "opus", "audio_kbps": 64}, "mpegts", ["--ts", "<source>"]),
+        ({"video_forwarding": 1}, "mpegts", ["--video-subgroups", "object"]),
+        ({"audio_frames_per_group": 10}, "mpegts", ["--audio-frames-per-group", "10"]),
+        ({"audio_forwarding": 1}, "mpegts", ["--audio-subgroups", "object"]),
         (NO_AUDIO, "mpegts", ["--no-audio"]),
         ({"audio_forwarding": 3}, "mpegts", ["-D"]),
         ({"duration_s": 600}, "mpegts", ["-t", "600"]),
@@ -86,13 +97,10 @@ def test_namespace_mode():
         ({"catalog": "none", "init_data": None}, "catalog"),
         ({"init_data": "track"}, "init_data"),
         ({"init_data": "object"}, "init_data"),
-        ({"video_codec": "h265"}, "video_codec"),
-        ({"video_forwarding": 1}, "video_forwarding"),
         ({"content": "clip"}, "content"),
-        ({"audio_codec": "opus", "audio_kbps": 64}, "audio_codec"),
-        ({"audio_frames_per_group": 10}, "audio_frames_per_group"),
-        ({"catalog": "msf", "packaging": "locmaf"}, "audio_frames_per_group"),
-        ({"audio_forwarding": 1}, "audio_forwarding"),
+        ({"packaging": "locmaf", "video_forwarding": 1}, "video_forwarding"),
+        ({"packaging": "locmaf", "audio_forwarding": 1}, "audio_forwarding"),
+        ({"packaging": "cmaf", "audio_forwarding": 3}, "audio_forwarding"),
         ({"audio_forwarding": 3, "transport": "webtransport"}, "transport"),
     ],
 )
@@ -109,33 +117,38 @@ def test_refuses_ca_file():
     assert not adapter.plan(req)["accept"]
 
 
-def test_translate_stats():
-    line = (
-        "  [pub 1:02.500] catalog: 3 obj · 0 obj/s · 0 kbps · video: 1875 obj · 30 obj/s"
-        " · 598 kbps · lag 12/40 ms · dropped 7 · audio: 2930 obj · 47 obj/s · 131 kbps\n"
+@pytest.fixture
+def fake_pub_media(monkeypatch):
+    """run() against a stand-in for pub_media; restores the signal handlers run() sets."""
+    saved = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM)}
+
+    def use(script):
+        argv = [sys.executable, "-c", script]
+        monkeypatch.setattr(adapter, "plan", lambda req: {"accept": True, "argv": argv})
+        return adapter.run(_request())
+
+    yield use
+    for s, handler in saved.items():
+        signal.signal(s, handler)
+
+
+def test_run_passes_events_through(fake_pub_media, capfd):
+    script = (
+        'print(\'@mtt {"event":"ready","endpoints":[]}\'); print(\'a log line\'); '
+        'print(\'@mtt {"event":"done","reason":"duration"}\')'
     )
-    event = adapter.translate(line, [])
-    assert event["event"] == "stats" and event["t"] == 62.5
-    assert event["tracks"]["video"] == {
-        "objects": 1875,
-        "objects_per_s": 30.0,
-        "kbps": 598.0,
-        "dropped": 7,
-    }
-    assert event["tracks"]["audio"]["kbps"] == 131.0
+    assert fake_pub_media(script) == 0
+    out, err = capfd.readouterr()
+    events = [json.loads(line.removeprefix("@mtt ")) for line in out.splitlines()]
+    assert [e["event"] for e in events] == ["ready", "done"]
+    assert "a log line" in err
 
 
-def test_translate_lifecycle():
-    endpoints = [{"url": "moqt://relay:4433", "transport": "moqt", "draft": 18}]
-    assert adapter.translate("  publishing...\n", endpoints)["event"] == "ready"
-    assert adapter.translate("  done\n", endpoints) == {"event": "done", "reason": "ended"}
-    lost = adapter.translate("  error: moqt://relay:4433 closed: code=0 reason=bye\n", endpoints)
-    assert lost == {
-        "event": "endpoint_lost",
-        "url": "moqt://relay:4433",
-        "reason": "code=0 reason=bye",
-    }
-    assert adapter.translate("  tracks: catalog, video, audio\n", endpoints) is None
+@pytest.mark.parametrize("code, expected", [(64, 64), (1, 69), (3, 70)])
+def test_run_exit_codes(fake_pub_media, capfd, code, expected):
+    assert fake_pub_media(f"raise SystemExit({code})") == expected
+    out, _ = capfd.readouterr()
+    assert json.loads(out.removeprefix("@mtt ")) == {"event": "done", "reason": f"exit {code}"}
 
 
 def test_check_mode_process(tmp_path):
