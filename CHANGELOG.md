@@ -17,3 +17,4 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 - `mtt api`: the public API and dashboard. Callers authenticate with an API key (`Authorization: Bearer mtt_…`) or a session cookie from `/login`. Roles are `view`, `run` and `admin`. Endpoints: `/api/v1/namespace`, `/namespace/decode`, `/presets`, `/tools`, `/relays`, `/jobs` (check, start or join, list, detail, stop, events) and `/admin/stop-all`. The runner gains `POST /check`.
 - `mtt keys create|list|revoke`: API keys, stored as the SHA-256 of their secret.
 - Presets and per-parameter fallbacks for job requests (`preset=1080p60`, or only the fields that differ). Namespaces must use the `openmoq/mtt/<tool>` prefix.
+- Container image (`docker/Dockerfile`: ffmpeg with x264, x265, SVT-AV1 and Opus; aiomoqt; non-root), a hardened compose project (`deploy/compose.yaml`: Caddy with automatic HTTPS, api, runner on an internal network) and `deploy/deploy.sh <ssh-host>` for manual deploys.
