@@ -25,7 +25,7 @@ FRACTIONAL_RATES = {
     "59_94": Fraction(60000, 1001),
 }
 AUDIO_CODECS = ("aac", "opus", "none")
-CONTENTS = ("ts", "bars", "noise", "clip")
+CONTENTS = ("clock", "bars", "noise", "clip")
 
 CATALOG_PACKAGING = {"msf": ("loc", "cmaf", "locmaf"), "none": ("loc",)}
 CATALOG_INIT_PACKAGING = ("cmaf", "locmaf")  # CMSF: CMAF headers go inline in the catalog

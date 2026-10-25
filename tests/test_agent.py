@@ -19,7 +19,7 @@ from moq_test_tracks.runner.agent import create_app, sweep_orphans
 
 TOKEN = "t0ken"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
-NS = "openmoq/mtt/fake/moq_test_tracks_00/msf/loc/catalog/h264/180/30/200/1000/0/aac/2/64/1/0/ts/0"
+NS = "openmoq/mtt/fake/moq_test_tracks_00/msf/loc/catalog/h264/180/30/200/1000/0/aac/2/64/1/0/clock/0"
 
 
 @pytest.fixture
@@ -64,9 +64,9 @@ def client(root):
         yield c
 
 
-def _job(content="ts", **extra):
+def _job(content="clock", **extra):
     return {
-        "namespace": NS.replace("/ts/", f"/{content}/"),
+        "namespace": NS.replace("/clock/", f"/{content}/"),
         "tool": "fake",
         "relay": "local",
         **extra,
@@ -134,11 +134,11 @@ def test_same_namespace_joins(client):
 
 
 def test_job_cap(client):
-    assert client.post("/jobs", json=_job("ts"), headers=AUTH).status_code == 201
+    assert client.post("/jobs", json=_job("clock"), headers=AUTH).status_code == 201
     assert client.post("/jobs", json=_job("noise"), headers=AUTH).status_code == 201
-    third = client.post("/jobs", json=_job("ts", ttl_s=99), headers=AUTH)
+    third = client.post("/jobs", json=_job("clock", ttl_s=99), headers=AUTH)
     assert third.json().get("joined") is True  # same namespace joins even at the cap
-    other = _job("ts")
+    other = _job("clock")
     other["namespace"] = NS.replace("/180/", "/360/").replace("/200/", "/600/")
     r = client.post("/jobs", json=other, headers=AUTH)
     assert r.status_code == 429 and "limit of 2 jobs" in r.json()["detail"]["errors"][0]
@@ -162,7 +162,7 @@ def test_rejections(client, body, text):
     assert any(text in e for e in r.json()["detail"]["errors"])
 
 
-CLIP_NS = NS.replace("/fake/", "/fake/demo/").replace("/ts/0", "/clip/0")
+CLIP_NS = NS.replace("/fake/", "/fake/demo/").replace("/clock/0", "/clip/0")
 
 
 def test_clip_jobs(client, root):

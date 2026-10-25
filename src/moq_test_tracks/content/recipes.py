@@ -30,7 +30,7 @@ def _rate(fps: Fraction) -> str:
 def _video_input(spec: TrackSpec) -> list[str]:
     size = f"{spec.video_width}x{spec.video_height}"
     rate = _rate(spec.fps)
-    if spec.content == "ts":
+    if spec.content == "clock":
         frame_s = float(1 / spec.fps)
         fontsize = max(12, spec.video_height // 18)
         graph = (
@@ -51,7 +51,7 @@ def _video_input(spec: TrackSpec) -> list[str]:
 def _audio_input(spec: TrackSpec) -> list[str]:
     layout = "mono" if spec.audio_channels == 1 else "stereo"
     rate = AUDIO_SAMPLE_RATE
-    if spec.content == "ts":
+    if spec.content == "clock":
         expr = "if(lt(mod(t\\,1)\\,0.1)\\,0.5*sin(2*PI*1000*t)\\,0.3*sin(2*PI*440*t))"
         graph = f"aevalsrc=exprs={expr}:s={rate}:c={layout}"
     elif spec.content == "bars":

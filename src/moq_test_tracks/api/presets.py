@@ -57,7 +57,7 @@ DEFAULTS = {
     "ch": "2",
     "afpg": "1",
     "afwd": "0",
-    "content": "ts",
+    "content": "clock",
     "dur": "0",
 }
 VIDEO_KBPS = {
