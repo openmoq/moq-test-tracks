@@ -109,7 +109,7 @@ def _audio_encoder(spec: TrackSpec) -> list[str]:
         return ["-c:a", "aac", "-b:a", f"{spec.audio_kbps}k", *common]
     if spec.audio_codec == "opus":
         return [
-            "-c:a", "libopus", "-b:a", f"{spec.audio_kbps}k", "-frame_duration", "20",
+            "-c:a", "libopus", "-b:a", f"{spec.audio_kbps}k", "-vbr", "off", "-frame_duration", "20",
             "-application", "lowdelay", *common,
         ]  # fmt: skip
     raise RecipeError(f"no encoder for audio codec {spec.audio_codec}")

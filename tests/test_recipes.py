@@ -55,6 +55,7 @@ def test_codecs():
     assert _value(av1, "-c:v") == "libsvtav1"
     opus = source_command(_spec(audio_codec="opus", audio_kbps=64), "mpegts", "o.ts")
     assert _value(opus, "-c:a") == "libopus" and _value(opus, "-frame_duration") == "20"
+    assert _value(opus, "-vbr") == "off"  # libopus VBR overshoots tonal content by ~50%
 
 
 @pytest.mark.parametrize(
