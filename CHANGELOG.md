@@ -22,6 +22,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Changed
 
+- Job caps: 16 jobs in total, per key and for aiomoqt (were 6, 2 and 6). Live encodes stay capped at 2.
 - **Breaking:** relay ids are `moqx-main` (was `moqx_main`) and `aiomoqt-relay`, which replaces `moqarena`; both match their hostnames. `aiomoqt-relay` tracks aiomoqt dev builds.
 - **Breaking:** content `ts` (tuple field 15) is renamed `clock`, following the draft, which now names content classes by what they measure and requires the capture time in the picture. Namespaces, presets, the dashboard and the manifests use `clock`.
 - **Breaking:** `moq_test_tracks_00` follows the revised draft. New tuple field 3, init data (`catalog`, `track`, `object`; `_` with no catalog); later fields move up one, so duration is field 16. Catalog `cmsf` is gone: `msf` with `cmaf` or `locmaf` packaging uses the CMSF extensions. Video codec `h264` is H.264 High, and the new `h264cb` is Constrained Baseline. The API, CLI (`--init`) and dashboard take the `init` parameter, defaulting to `catalog`. The aiomoqt adapter refuses `track` and `object` init data.
