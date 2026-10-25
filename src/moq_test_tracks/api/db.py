@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS keys (
     created REAL NOT NULL,
     expires REAL,
     revoked REAL,
-    last_used REAL
+    last_used REAL,
+    unrestricted INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS audit (
     time REAL NOT NULL,
@@ -40,6 +41,9 @@ class Db:
         path.parent.mkdir(parents=True, exist_ok=True)
         with self._lock, closing(self._connect()) as c, c:
             c.executescript(SCHEMA)
+            columns = {r["name"] for r in c.execute("PRAGMA table_info(keys)")}
+            if "unrestricted" not in columns:
+                c.execute("ALTER TABLE keys ADD COLUMN unrestricted INTEGER NOT NULL DEFAULT 0")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=5)

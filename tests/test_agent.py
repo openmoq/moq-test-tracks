@@ -198,15 +198,19 @@ def test_key_job_limit(client):
         r.status_code == 429
         and "this key is at its limit of 1 jobs" in r.json()["detail"]["errors"][0]
     )
-    assert client.post("/jobs", json={**other, "admin": True}, headers=AUTH).status_code == 201
+    assert (
+        client.post("/jobs", json={**other, "unrestricted": True}, headers=AUTH).status_code == 201
+    )
     client.post("/stop-all", headers=AUTH)
 
 
 def test_admin_ttl(client):
     long = {**_job(), "ttl_s": 7200}
     assert client.post("/check", json=long, headers=AUTH).status_code == 422
-    assert client.post("/check", json={**long, "admin": True}, headers=AUTH).status_code == 200
-    beyond = {**_job(), "ttl_s": 86401, "admin": True}
+    assert (
+        client.post("/check", json={**long, "unrestricted": True}, headers=AUTH).status_code == 200
+    )
+    beyond = {**_job(), "ttl_s": 86401, "unrestricted": True}
     assert client.post("/check", json=beyond, headers=AUTH).status_code == 422
 
 

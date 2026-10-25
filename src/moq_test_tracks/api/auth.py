@@ -20,6 +20,7 @@ from .db import Db
 ROLES = ("view", "run", "admin")  # each role includes the ones before it
 PREFIX = "mtt"
 SESSION_TTL_S = 12 * 3600
+UNRESTRICTED_MAX_DAYS = 30
 
 
 @dataclass(frozen=True)
@@ -27,26 +28,37 @@ class Principal:
     key_id: str
     name: str
     role: str
+    unrestricted: bool = False
 
     def can(self, role: str) -> bool:
         return ROLES.index(self.role) >= ROLES.index(role)
+
+    @property
+    def exempt(self) -> bool:
+        """Exempt from the per-key limits (the global caps still apply)."""
+        return self.unrestricted or self.can("admin")
 
 
 def _hash(secret: str) -> str:
     return hashlib.sha256(secret.encode()).hexdigest()
 
 
-def new_key(db: Db, name: str, role: str, expires_days: float | None = None) -> str:
+def new_key(
+    db: Db, name: str, role: str, expires_days: float | None = None, unrestricted: bool = False
+) -> str:
     """Create a key; the returned string is the only copy of its secret."""
     if role not in ROLES:
         raise ValueError(f"role must be one of {', '.join(ROLES)}")
+    if unrestricted and not (expires_days and 0 < expires_days <= UNRESTRICTED_MAX_DAYS):
+        raise ValueError(f"unrestricted keys must expire within {UNRESTRICTED_MAX_DAYS} days")
     key_id = base64.b32encode(secrets.token_bytes(5)).decode().lower()
     secret = secrets.token_urlsafe(32)
     now = time.time()
     expires = now + expires_days * 86400 if expires_days else None
     db.execute(
-        "INSERT INTO keys (id, name, role, secret_hash, created, expires) VALUES (?, ?, ?, ?, ?, ?)",
-        (key_id, name, role, _hash(secret), now, expires),
+        "INSERT INTO keys (id, name, role, secret_hash, created, expires, unrestricted)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (key_id, name, role, _hash(secret), now, expires, int(unrestricted)),
     )
     return f"{PREFIX}_{key_id}_{secret}"
 
@@ -59,13 +71,15 @@ def parse(key: str) -> tuple[str, str] | None:
 
 
 def _principal(db: Db, key_id: str) -> Principal | None:
-    rows = db.query("SELECT id, name, role, expires, revoked FROM keys WHERE id = ?", (key_id,))
+    rows = db.query(
+        "SELECT id, name, role, expires, revoked, unrestricted FROM keys WHERE id = ?", (key_id,)
+    )
     if not rows:
         return None
     row = rows[0]
     if row["revoked"] is not None or (row["expires"] is not None and row["expires"] < time.time()):
         return None
-    return Principal(row["id"], row["name"], row["role"])
+    return Principal(row["id"], row["name"], row["role"], bool(row["unrestricted"]))
 
 
 def verify(db: Db, key: str) -> Principal | None:
@@ -84,7 +98,8 @@ def verify(db: Db, key: str) -> Principal | None:
 
 def list_keys(db: Db) -> list[dict]:
     rows = db.query(
-        "SELECT id, name, role, created, expires, revoked, last_used FROM keys ORDER BY created"
+        "SELECT id, name, role, created, expires, revoked, last_used, unrestricted FROM keys"
+        " ORDER BY created"
     )
     return [dict(r) for r in rows]
 

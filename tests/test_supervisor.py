@@ -271,7 +271,7 @@ def test_job_errors(fake_tool):
             draft=18,
             ttl_s=7200,
             policy=policy,
-            admin=True,
+            unrestricted=True,
         )  # fmt: skip
     )
     assert "exceeds" not in admin and "ttl" not in admin

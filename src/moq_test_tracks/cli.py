@@ -364,15 +364,18 @@ def cmd_keys(args: argparse.Namespace) -> int:
     db = Db(_db_path(args))
     if args.keys_command == "create":
         try:
-            key = auth.new_key(db, args.name, args.role, args.expires_days)
+            key = auth.new_key(db, args.name, args.role, args.expires_days, args.unrestricted)
         except ValueError as e:
             return _fail([str(e)])
+        detail = f"{args.name} {args.role}" + (" unrestricted" if args.unrestricted else "")
+        db.audit("key_created", auth.parse(key)[0], None, detail)
         print(key)
         print("Store this key now; it cannot be shown again.", file=sys.stderr)
     elif args.keys_command == "list":
         for k in auth.list_keys(db):
             status = "revoked" if k["revoked"] else "active"
-            print(f"{k['id']}  {k['role']:5}  {status:7}  {k['name']}")
+            limits = "unrestricted" if k["unrestricted"] else "per-key"
+            print(f"{k['id']}  {k['role']:5}  {status:7}  {limits:12}  {k['name']}")
     elif args.keys_command == "revoke":
         if not auth.revoke(db, args.key_id):
             return _fail([f"no active key {args.key_id}"])
@@ -436,6 +439,11 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--name", required=True)
     create.add_argument("--role", choices=("view", "run", "admin"), default="run")
     create.add_argument("--expires-days", type=float)
+    create.add_argument(
+        "--unrestricted",
+        action="store_true",
+        help="exempt from per-key limits up to the global caps; needs --expires-days <= 30",
+    )
     keys_sub.add_parser("list", help="list keys")
     rev = keys_sub.add_parser("revoke", help="revoke a key by id")
     rev.add_argument("key_id")
