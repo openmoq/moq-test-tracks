@@ -34,5 +34,6 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 ## Fixed
 
 - Jobs that need the same mp4 loop source no longer render it concurrently into one temporary file, which failed all but one job and could leave a corrupt file in the cache. One render runs per cache entry; each render writes its own temporary file and is checked before it replaces the entry, and an incomplete cached file is rendered again.
+- Opus audio runs at the requested bitrate. libopus's default VBR produced about 96 kbps for `abr` 64 on the `clock` tone; the recipe now uses CBR (`-vbr off`).
 - The per-key job limit (`per_key_defaults.max_jobs`) is enforced for keys below admin; joining an active job does not count.
 - A job's log no longer reports `source stage exited` when the tool ends its run normally.
