@@ -155,6 +155,14 @@ def test_rejections(client, body, text):
     assert any(text in e for e in r.json()["detail"]["errors"])
 
 
+def test_admin_ttl(client):
+    long = {**_job(), "ttl_s": 7200}
+    assert client.post("/check", json=long, headers=AUTH).status_code == 422
+    assert client.post("/check", json={**long, "admin": True}, headers=AUTH).status_code == 200
+    beyond = {**_job(), "ttl_s": 86401, "admin": True}
+    assert client.post("/check", json=beyond, headers=AUTH).status_code == 422
+
+
 def test_force_kill(client):
     job = client.post("/jobs", json=_job("noise"), headers=AUTH).json()  # ignores SIGINT
     _wait(client, job["id"], ("running",))
