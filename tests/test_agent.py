@@ -38,6 +38,7 @@ def root(tmp_path):
     )
     (tmp_path / "config" / "policy.yaml").write_text(
         "namespace_prefix: [openmoq, mtt]\nglobal: {max_jobs: 2, max_live_encodes: 2}\n"
+        "per_key_defaults: {max_jobs: 1}\n"
     )
     adapter = tmp_path / "adapters" / "fake"
     adapter.mkdir(parents=True)
@@ -153,6 +154,21 @@ def test_rejections(client, body, text):
     r = client.post("/jobs", json=body, headers=AUTH)
     assert r.status_code == 422
     assert any(text in e for e in r.json()["detail"]["errors"])
+
+
+def test_key_job_limit(client):
+    assert client.post("/jobs", json=_job(owner="k1"), headers=AUTH).status_code == 201
+    other = {
+        **_job(owner="k1"),
+        "namespace": NS.replace("/180/", "/360/").replace("/200/", "/600/"),
+    }
+    r = client.post("/jobs", json=other, headers=AUTH)
+    assert (
+        r.status_code == 429
+        and "this key is at its limit of 1 jobs" in r.json()["detail"]["errors"][0]
+    )
+    assert client.post("/jobs", json={**other, "admin": True}, headers=AUTH).status_code == 201
+    client.post("/stop-all", headers=AUTH)
 
 
 def test_admin_ttl(client):

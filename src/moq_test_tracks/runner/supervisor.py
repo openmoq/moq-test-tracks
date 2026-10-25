@@ -32,6 +32,9 @@ CHECK_TIMEOUT_S = 30
 SOURCE_GRACE_S = 2
 EVENT_PREFIX = "@mtt "
 
+# One render per cache key at a time; jobs that need the same loop wait for it.
+_RENDERS: dict[str, asyncio.Lock] = {}
+
 
 class JobError(RuntimeError):
     pass
@@ -49,6 +52,33 @@ class CheckResult:
 def _killpg(pid: int, sig: int) -> None:
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(pid, sig)
+
+
+def mp4_complete(path: Path) -> bool:
+    """True if the top-level boxes span the file exactly and include ftyp and moov."""
+    try:
+        size = path.stat().st_size
+        seen, pos = set(), 0
+        with path.open("rb") as f:
+            while pos < size:
+                f.seek(pos)
+                head = f.read(16)
+                if len(head) < 8:
+                    return False
+                box = int.from_bytes(head[:4], "big")
+                if box == 1:
+                    if len(head) < 16:
+                        return False
+                    box = int.from_bytes(head[8:16], "big")
+                elif box == 0:
+                    box = size - pos
+                if box < 8:
+                    return False
+                seen.add(head[4:8])
+                pos += box
+        return pos == size and {b"ftyp", b"moov"} <= seen
+    except OSError:
+        return False
 
 
 class Job:
@@ -163,24 +193,32 @@ class Job:
                 json.dumps(recipes.source_command(self.spec, "mp4", "OUT")).encode()
             ).hexdigest()[:24]
             path = self.cache_dir / f"{key}.mp4"
-            if not path.exists():
-                self.cache_dir.mkdir(parents=True, exist_ok=True)
-                tmp = path.with_suffix(".part.mp4")
-                argv = recipes.source_command(self.spec, "mp4", tmp)
-                proc = await asyncio.create_subprocess_exec(
-                    *argv,
-                    stdin=asyncio.subprocess.DEVNULL,
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.PIPE,
-                    preexec_fn=self._preexec,
-                )
-                _, err = await proc.communicate()
-                if proc.returncode != 0:
-                    raise JobError(f"rendering the mp4 loop failed: {err.decode().strip()[-300:]}")
-                tmp.rename(path)
+            async with _RENDERS.setdefault(key, asyncio.Lock()):
+                if not mp4_complete(path):
+                    await self._render_mp4(path)
             self.request["source"] = {"format": fmt, "path": str(path), "fifo": False, "loop": True}
             return
         raise JobError(f"no source stage for format {fmt}")
+
+    async def _render_mp4(self, path: Path) -> None:
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.stem}.{self.request['job_id']}.part.mp4")
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *recipes.source_command(self.spec, "mp4", tmp),
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+                preexec_fn=self._preexec,
+            )
+            _, err = await proc.communicate()
+            if proc.returncode != 0:
+                raise JobError(f"rendering the mp4 loop failed: {err.decode().strip()[-300:]}")
+            if not mp4_complete(tmp):
+                raise JobError("rendering the mp4 loop produced an incomplete file")
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
 
     async def _stop_source(self) -> None:
         if self._source is None or self._source.returncode is not None:
@@ -267,7 +305,11 @@ class Job:
             if self._source is None:
                 return
             rc = await self._source.wait()
-            if adapter.returncode is None and not self._stopping:
+            # The tool closing its input at the end of a run also ends the source.
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(adapter.wait(), SOURCE_GRACE_S)
+                return
+            if not self._stopping:
                 logline(f"source stage exited {rc}; stopping")
                 self.stop()
 

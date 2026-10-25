@@ -24,3 +24,9 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 - **Breaking:** `moq_test_tracks_00` follows the revised draft. New tuple field 3, init data (`catalog`, `track`, `object`; `_` with no catalog); later fields move up one, so duration is field 16. Catalog `cmsf` is gone: `msf` with `cmaf` or `locmaf` packaging uses the CMSF extensions. Video codec `h264` is H.264 High, and the new `h264cb` is Constrained Baseline. The API, CLI (`--init`) and dashboard take the `init` parameter, defaulting to `catalog`. The aiomoqt adapter refuses `track` and `object` init data.
 - The runner image and the aiomoqt adapter move to aiomoqt 0.13.2. Every job now sends draft-frindell-moq-timestamp timing (`--timestamp-mapping`: TIMESCALE and TIMESTAMP_MAPPING Track Properties, `prft` in CMAF and LOCMAF), and job events come from pub_media's own `@mtt` output. The adapter newly accepts video codec `h265`, audio codec `opus`, video and audio forwarding 1 (not with `locmaf`), and any audio frames per group. Publish mode delivers media again.
 - Admin keys may exceed the per-key limits on height, frame rate, video bitrate and TTL (up to `global.max_ttl_s`); the global caps still apply. The runner API takes an `admin` flag, which the api service sets from the caller's role. `config/tools.yaml`: aiomoqt may run 6 jobs.
+
+## Fixed
+
+- Jobs that need the same mp4 loop source no longer render it concurrently into one temporary file, which failed all but one job and could leave a corrupt file in the cache. One render runs per cache entry; each render writes its own temporary file and is checked before it replaces the entry, and an incomplete cached file is rendered again.
+- The per-key job limit (`per_key_defaults.max_jobs`) is enforced for keys below admin; joining an active job does not count.
+- A job's log no longer reports `source stage exited` when the tool ends its run normally.

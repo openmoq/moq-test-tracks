@@ -19,7 +19,7 @@ from moq_test_tracks import config
 from moq_test_tracks.config import Relay, Tool, job_errors
 from moq_test_tracks.content import recipes
 from moq_test_tracks.runner.request import build
-from moq_test_tracks.runner.supervisor import EXIT_OK, Job
+from moq_test_tracks.runner.supervisor import EXIT_OK, Job, mp4_complete
 from moq_test_tracks.spec import decode, from_slash
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -169,6 +169,67 @@ def test_mp4_loop_is_cached(fake_tool, tmp_path, monkeypatch):
     again = _job(fake_tool, tmp_path, source="mp4")
     _collect(again, stop_after=0.05)
     assert again.request["source"]["path"] == str(path) and path.stat().st_mtime == mtime
+
+
+def _box(kind, payload=b""):
+    return (8 + len(payload)).to_bytes(4, "big") + kind + payload
+
+
+@pytest.mark.parametrize(
+    "data, complete",
+    [
+        (_box(b"ftyp", b"isom") + _box(b"moov") + _box(b"mdat", b"x"), True),
+        (_box(b"ftyp") + (1).to_bytes(4, "big") + b"moov" + (16).to_bytes(8, "big"), True),
+        (_box(b"ftyp") + (0).to_bytes(4, "big") + b"moov" + b"rest", True),
+        (_box(b"ftyp") + _box(b"mdat", b"x"), False),  # no moov
+        ((_box(b"ftyp") + _box(b"moov") + _box(b"mdat", b"xyz"))[:-1], False),  # truncated
+        (b"\x00\x00\x00\x04moov", False),
+        (b"", False),
+    ],
+)
+def test_mp4_complete(tmp_path, data, complete):
+    path = tmp_path / "a.mp4"
+    path.write_bytes(data)
+    assert mp4_complete(path) is complete
+
+
+@pytest.fixture
+def fake_render(tmp_path, monkeypatch):
+    """Replaces the mp4 recipe with a slow script that writes a minimal mp4 and counts runs."""
+    counter = tmp_path / "renders"
+    script = (
+        "import sys, time; time.sleep(0.2); open(sys.argv[2], 'a').write('r\\n'); "
+        "b = lambda t, p=b'': (8 + len(p)).to_bytes(4, 'big') + t + p; "
+        "open(sys.argv[1], 'wb').write(b(b'ftyp', b'isom') + b(b'moov') + b(b'mdat', b'x'))"
+    )
+    monkeypatch.setattr(
+        recipes,
+        "source_command",
+        lambda spec, fmt, out: [sys.executable, "-c", script, str(out), str(counter)],
+    )
+    return counter
+
+
+def test_concurrent_jobs_share_one_render(fake_tool, tmp_path, fake_render):
+    jobs = [_job(fake_tool, tmp_path) for _ in range(3)]
+
+    async def prepare():
+        await asyncio.gather(*(j._prepare_source("mp4") for j in jobs))
+
+    asyncio.run(prepare())
+    assert fake_render.read_text() == "r\n"
+    paths = {j.request["source"]["path"] for j in jobs}
+    assert len(paths) == 1 and mp4_complete(Path(paths.pop()))
+    assert not list((tmp_path / "cache").glob("*.part.mp4"))
+
+
+def test_corrupt_cache_is_rendered_again(fake_tool, tmp_path, fake_render):
+    job = _job(fake_tool, tmp_path)
+    asyncio.run(job._prepare_source("mp4"))
+    path = Path(job.request["source"]["path"])
+    path.write_bytes(b"\x00\x00\x01\x00moov")
+    asyncio.run(_job(fake_tool, tmp_path)._prepare_source("mp4"))
+    assert fake_render.read_text() == "r\nr\n" and mp4_complete(path)
 
 
 def test_config_loads_repo():
