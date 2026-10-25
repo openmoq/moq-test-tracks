@@ -153,7 +153,7 @@ Example:
 
 ```
 curl -X POST -H "Authorization: Bearer $MTT_KEY" \
-  "https://moq-test.ci.openmoq.org/api/v1/jobs?preset=1080p60&ac=opus&afwd=3&tool=aiomoqt&relay=moqx_main"
+  "https://moq-test.ci.openmoq.org/api/v1/jobs?preset=1080p60&ac=opus&afwd=3&tool=aiomoqt&relay=moqx-main"
 ```
 
 ## Tools
@@ -285,19 +285,16 @@ and code execution through the launch path.
 
 Everything is in `deploy/compose.yaml`; the host only needs Docker.
 
-- **DNS:** `moq-test.ci.openmoq.org`.
-- **Interim host:** moqarena (OCI) until the Linode is ready.
-  - moqarena's TCP 80 and 443 are held by the existing g5-web nginx, so the
-    compose there publishes HTTPS on another port, set by
-    `MTT_HTTPS_PORT` (for example 8443).
-  - That port has to be opened in the OCI security list and in ufw.
-- **Certificates:** DNS-01 through Route53 works without ports 80 and 443,
-  so the same compose runs unchanged on both hosts.
-  - The proxy image is Caddy built with `caddy-dns/route53`.
-  - It needs an IAM key scoped to the `ci.openmoq.org` zone, kept in
-    `deploy/.env`, which is not committed.
-- **Linode:** `MTT_HTTPS_PORT=443`, plus a host egress policy that limits
-  the runner's UDP to the allowlisted relays.
+- **Host:** `moq-test.ci.openmoq.org`, a dedicated Linode (Ubuntu 24.04,
+  8 CPUs). `deploy/deploy.sh <ssh-host>` ships the committed tree and
+  restarts the compose project; `deploy/.env` on the host sets
+  `MTT_HOSTNAMES` and `MTT_PUBLIC_ORIGINS` and holds the generated secrets.
+- **Network:** ufw admits only TCP 22, 80 and 443, and a provider firewall
+  sits in front. Ports published by Docker bypass ufw, so only Caddy
+  publishes any.
+- **Certificates:** Caddy's automatic HTTPS (HTTP-01 / TLS-ALPN-01).
+- **Relays:** `config/relays.yaml`. `aiomoqt-relay` tracks aiomoqt dev builds
+  and speaks drafts 14 to 22.
 - **Default relay:** moqx-main.
   - Raw QUIC: `moqt://moqx-main.ci.openmoq.org:4433`.
   - WebTransport: `https://moqx-main.ci.openmoq.org:4433/moq-relay`.
@@ -330,9 +327,7 @@ Everything is in `deploy/compose.yaml`; the host only needs Docker.
 
 ## Open decisions
 
-1. moqarena interim: publish on an alternate HTTPS port (as planned), or
-   move g5-web behind our Caddy?
-2. Should a read-only list of active namespaces be public, or should
+1. Should a read-only list of active namespaces be public, or should
    everything sit behind a key?
 
 ## Draft open issues
