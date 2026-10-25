@@ -12,7 +12,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 ## Added
 
 - Namespace codec for `moq_test_tracks_00` and `moq-test-00`, with the MoQT name representation, and the `mtt ns encode|decode|render` command.
-- `mtt run`: runs one job in the foreground against an allowlisted relay. It covers the content recipes (`ts`, `bars`, `noise`), live MPEG-TS and cached mp4-loop sources, the aiomoqt adapter, supervision (TTL, stop, exit codes) and `@mtt` status events.
+- `mtt run`: runs one job in the foreground against an allowlisted relay. It covers the content recipes (`clock`, `bars`, `noise`), live MPEG-TS and cached mp4-loop sources, the aiomoqt adapter, supervision (TTL, stop, exit codes) and `@mtt` status events.
 - `mtt runner`: the internal runner API (`/jobs` start, list, detail, stop or force-kill, event stream; `/stop-all`; `/healthz`) behind a bearer token. It re-validates every job, joins requests for an active relay and namespace, enforces the `global.max_jobs` and `max_live_encodes` policy caps, runs jobs at nice `MTT_JOB_NICE` (default 10), and on start kills process groups an earlier runner left behind.
 - `mtt api`: the public API and dashboard. Callers authenticate with an API key (`Authorization: Bearer mtt_…`) or a session cookie from `/login`. Roles are `view`, `run` and `admin`. Endpoints: `/api/v1/namespace`, `/namespace/decode`, `/presets`, `/tools`, `/relays`, `/jobs` (check, start or join, list, detail, stop, events) and `/admin/stop-all`. The runner gains `POST /check`.
 - `mtt keys create|list|revoke`: API keys, stored as the SHA-256 of their secret.
@@ -22,6 +22,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Changed
 
+- **Breaking:** content `ts` (tuple field 15) is renamed `clock`, following the draft, which now names content classes by what they measure and requires the capture time in the picture. Namespaces, presets, the dashboard and the manifests use `clock`.
 - **Breaking:** `moq_test_tracks_00` follows the revised draft. New tuple field 3, init data (`catalog`, `track`, `object`; `_` with no catalog); later fields move up one, so duration is field 16. Catalog `cmsf` is gone: `msf` with `cmaf` or `locmaf` packaging uses the CMSF extensions. Video codec `h264` is H.264 High, and the new `h264cb` is Constrained Baseline. The API, CLI (`--init`) and dashboard take the `init` parameter, defaulting to `catalog`. The aiomoqt adapter refuses `track` and `object` init data.
 - The runner image and the aiomoqt adapter move to aiomoqt 0.13.2. Every job now sends draft-frindell-moq-timestamp timing (`--timestamp-mapping`: TIMESCALE and TIMESTAMP_MAPPING Track Properties, `prft` in CMAF and LOCMAF), and job events come from pub_media's own `@mtt` output. The adapter newly accepts video codec `h265`, audio codec `opus`, video and audio forwarding 1 (not with `locmaf`), and any audio frames per group. Publish mode delivers media again.
 - Admin keys may exceed the per-key limits on height, frame rate, video bitrate and TTL (up to `global.max_ttl_s`); the global caps still apply. The runner API takes an `admin` flag, which the api service sets from the caller's role. `config/tools.yaml`: aiomoqt may run 6 jobs.

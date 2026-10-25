@@ -245,7 +245,7 @@ def test_query_parameters_and_check(client, keys, stub):
 
 
 def test_namespace_prefix_is_enforced(client, keys):
-    ns = "elsewhere/x/moq_test_tracks_00/msf/loc/catalog/h264/360/30/600/2000/0/aac/2/128/1/0/ts/0"
+    ns = "elsewhere/x/moq_test_tracks_00/msf/loc/catalog/h264/360/30/600/2000/0/aac/2/128/1/0/clock/0"
     r = client.post("/api/v1/jobs", json={"namespace": ns}, headers=bearer(keys["run"]))
     assert r.status_code == 422 and "prefix must be openmoq/mtt/aiomoqt" in r.text
     ok = ns.replace("elsewhere/x", "openmoq/mtt/aiomoqt")

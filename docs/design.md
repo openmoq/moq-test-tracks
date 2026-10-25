@@ -193,7 +193,7 @@ Filter graphs and encoder arguments are built only from validated field
 values.
 
 - **Content:**
-  - `ts`: testsrc2 with drawtext overlays (wall clock, frame and group),
+  - `clock`: testsrc2 with drawtext overlays (wall clock, frame and group),
     plus a tone with a one-second beep and flash;
   - `bars`: smptehdbars with 1 kHz;
   - `noise`: a noise source and anoisesrc.

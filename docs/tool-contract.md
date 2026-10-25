@@ -59,7 +59,7 @@ capabilities:                      # coarse; used to grey out UI options
   video_forwarding: [0]
   audio_forwarding: [0, 3]
   audio_frames_per_group: [1]
-  content: [ts, bars, noise, clip]
+  content: [clock, bars, noise, clip]
   transport: [moqt, webtransport]
   datagram_transport: [moqt]
   draft: [14, 16, 18, 20, 22]
@@ -107,8 +107,8 @@ No secrets are ever passed to a tool.
   "protocol": "moq_test_tracks_00",
   "namespace": ["openmoq", "mtt", "aiomoqt", "moq_test_tracks_00",
                 "msf", "loc", "catalog", "h264", "720", "30", "2500", "2000", "0",
-                "aac", "2", "128", "1", "0", "ts", "0"],
-  "namespace_safe": "openmoq-mtt-aiomoqt-moq_test_tracks_00-msf-loc-catalog-h264-720-30-2500-2000-0-aac-2-128-1-0-ts-0",
+                "aac", "2", "128", "1", "0", "clock", "0"],
+  "namespace_safe": "openmoq-mtt-aiomoqt-moq_test_tracks_00-msf-loc-catalog-h264-720-30-2500-2000-0-aac-2-128-1-0-clock-0",
   "tracks": ["catalog", "video", "audio"],
   "fields": {
     "catalog": "msf", "packaging": "loc", "init_data": "catalog",
@@ -116,7 +116,7 @@ No secrets are ever passed to a tool.
     "frame_rate": "30", "video_kbps": 2500, "group_ms": 2000, "video_forwarding": 0,
     "audio_codec": "aac", "audio_channels": 2,
     "audio_kbps": 128, "audio_frames_per_group": 1, "audio_forwarding": 0,
-    "content": "ts", "duration_s": 0
+    "content": "clock", "duration_s": 0
   },
   "endpoints": [
     {"url": "moqt://moqx-main.ci.openmoq.org:4433", "transport": "moqt", "draft": 18}

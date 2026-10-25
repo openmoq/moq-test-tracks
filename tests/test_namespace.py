@@ -42,15 +42,15 @@ PREFIX = "openmoq/mtt/moq_test_tracks_00/"
 
 # The examples appendix of draft-marzot-moq-test-tracks.
 DRAFT_EXAMPLES = [
-    PREFIX + "msf/loc/catalog/h264/720/30/2500/2000/0/aac/2/128/1/0/ts/0",
-    PREFIX + "msf/loc/track/av1/1080/60/6000/2000/0/opus/2/64/1/3/ts/0",
-    PREFIX + "msf/loc/object/h264cb/360/30/600/2000/0/aac/2/128/1/0/ts/0",
-    PREFIX + "msf/cmaf/catalog/h264/720/29_97/2500/2002/0/none/_/_/_/_/ts/600",
-    PREFIX + "none/loc/_/none/_/_/_/_/_/opus/1/32/10/0/ts/0",
+    PREFIX + "msf/loc/catalog/h264/720/30/2500/2000/0/aac/2/128/1/0/clock/0",
+    PREFIX + "msf/loc/track/av1/1080/60/6000/2000/0/opus/2/64/1/3/clock/0",
+    PREFIX + "msf/loc/object/h264cb/360/30/600/2000/0/aac/2/128/1/0/clock/0",
+    PREFIX + "msf/cmaf/catalog/h264/720/29_97/2500/2002/0/none/_/_/_/_/clock/600",
+    PREFIX + "none/loc/_/none/_/_/_/_/_/opus/1/32/10/0/clock/0",
 ]
 CMAF_EXAMPLE = DRAFT_EXAMPLES[3]
 DRAFT_RENDERED = (
-    "openmoq-mtt-moq_test_tracks_00-msf-loc-catalog-h264-720-30-2500-2000-0-aac-2-128-1-0-ts-0"
+    "openmoq-mtt-moq_test_tracks_00-msf-loc-catalog-h264-720-30-2500-2000-0-aac-2-128-1-0-clock-0"
     "--video"
 )
 
@@ -75,7 +75,7 @@ def _base(**changes):
         audio_kbps=128,
         audio_frames_per_group=1,
         audio_forwarding=0,
-        content="ts",
+        content="clock",
         duration_s=0,
     )
     fields.update(changes)
@@ -145,7 +145,7 @@ BASE = DRAFT_EXAMPLES[0]
         (_replace(BASE, 3, "inline"), 3),
         (_replace(BASE, 3, "_"), 3),  # a catalog exists, so init data applies
         (_replace(_replace(BASE, 2, "cmaf"), 3, "track"), 3),  # CMSF: init in the catalog
-        (PREFIX + "none/loc/catalog/h264/720/30/2500/2000/0/aac/2/128/1/0/ts/0", 3),
+        (PREFIX + "none/loc/catalog/h264/720/30/2500/2000/0/aac/2/128/1/0/clock/0", 3),
         (_replace(BASE, 5, "0720"), 5),  # leading zero
         (_replace(BASE, 5, "+720"), 5),
         (_replace(BASE, 5, "700"), 5),  # not a defined height
@@ -162,9 +162,9 @@ BASE = DRAFT_EXAMPLES[0]
         (_replace(BASE, 14, "2"), 14),
         (_replace(BASE, 15, "film"), 15),
         (_replace(BASE, 16, "86401"), 16),
-        (PREFIX + "none/cmaf/_/h264/720/30/2500/2000/0/aac/2/128/1/0/ts/0", 2),
-        (PREFIX + "none/loc/_/none/720/_/_/_/_/aac/2/128/1/0/ts/0", 5),  # n/a must be _
-        (PREFIX + "msf/locmaf/catalog/h264/720/30/2500/2000/0/aac/2/128/1/3/ts/0", 14),
+        (PREFIX + "none/cmaf/_/h264/720/30/2500/2000/0/aac/2/128/1/0/clock/0", 2),
+        (PREFIX + "none/loc/_/none/720/_/_/_/_/aac/2/128/1/0/clock/0", 5),  # n/a must be _
+        (PREFIX + "msf/locmaf/catalog/h264/720/30/2500/2000/0/aac/2/128/1/3/clock/0", 14),
     ],
 )
 def test_invalid_fields(text, index):
@@ -303,7 +303,7 @@ ENCODE_ARGS = [
     "--cat", "msf", "--pkg", "loc", "--init", "catalog",
     "--vc", "h264", "--h", "720", "--fps", "30", "--vbr", "2500", "--gop", "2000", "--vfwd", "0",
     "--ac", "aac", "--ch", "2", "--abr", "128", "--afpg", "1", "--afwd", "0",
-    "--content", "ts", "--dur", "0",
+    "--content", "clock", "--dur", "0",
 ]  # fmt: skip
 
 

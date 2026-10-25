@@ -16,8 +16,8 @@ content). The service encodes and publishes matching media to a relay with
 the publisher tool of your choice.
 
 ```
-openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/catalog/h264/720/30/2500/2000/0/aac/2/128/1/0/ts/0
-└──── prefix ─────┘ └──── version ───┘ └────────────── characteristic fields 1–16 ──────────────┘
+openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/catalog/h264/720/30/2500/2000/0/aac/2/128/1/0/clock/0
+└──── prefix ─────┘ └──── version ───┘ └─────────────── characteristic fields 1–16 ────────────────┘
 ```
 
 > **Status: planning.** Nothing runs yet. See [docs/design.md](docs/design.md)
