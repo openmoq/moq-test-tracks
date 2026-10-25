@@ -194,10 +194,11 @@ def job_errors(
     draft: int,
     ttl_s: int,
     policy: Policy,
-    admin: bool = False,
+    unrestricted: bool = False,
 ) -> list[str]:
-    """Reasons a job is out of bounds before the adapter is asked. Admin jobs
-    may exceed the per-key limits, never the global caps."""
+    """Reasons a job is out of bounds before the adapter is asked. Unrestricted
+    jobs (admin or unrestricted keys) may exceed the per-key limits, never the
+    global caps."""
     errors = []
     if mode not in MODES:
         errors.append(f"mode {mode} is not one of {', '.join(MODES)}")
@@ -219,7 +220,7 @@ def job_errors(
         "datagram_transport", caps.get("transport", [transport])
     ):
         errors.append(f"{tool.id} does not send datagrams over {transport}")
-    if not admin:
+    if not unrestricted:
         if spec.video_height is not None and spec.video_height > policy.max_height:
             errors.append(f"height {spec.video_height} exceeds the cap {policy.max_height}")
         if spec.fps is not None and spec.fps > Fraction(policy.max_fps):
@@ -228,7 +229,7 @@ def job_errors(
             errors.append(
                 f"video bitrate {spec.video_kbps} exceeds the cap {policy.max_video_kbps}"
             )
-    max_ttl = policy.global_max_ttl_s if admin else policy.max_ttl_s
+    max_ttl = policy.global_max_ttl_s if unrestricted else policy.max_ttl_s
     if not 1 <= ttl_s <= max_ttl:
         errors.append(f"ttl {ttl_s} s is outside 1-{max_ttl}")
     return errors

@@ -49,7 +49,7 @@ class JobIn(BaseModel):
     mode: str = "publish"
     ttl_s: int | None = None
     owner: str | None = None
-    admin: bool = False  # set by the api service from the caller's role
+    unrestricted: bool = False  # exempt from per-key limits; set by the api service
 
 
 class Rejected(Exception):
@@ -163,7 +163,7 @@ class Registry:
         ttl = body.ttl_s or cfg.policy.default_ttl_s
         errors = job_errors(
             tool, relay, decoded.spec, mode=body.mode, transport=body.transport, draft=draft,
-            ttl_s=ttl, policy=cfg.policy, admin=body.admin,
+            ttl_s=ttl, policy=cfg.policy, unrestricted=body.unrestricted,
         )  # fmt: skip
         if errors:
             raise Rejected(422, errors)
@@ -235,7 +235,7 @@ class Registry:
             raise Rejected(429, [f"the runner is at its limit of {cfg.policy.max_jobs} jobs"])
         if sum(1 for e in active if e.job.tool.id == tool.id) >= tool.max_jobs:
             raise Rejected(429, [f"{tool.id} is at its limit of {tool.max_jobs} jobs"])
-        if body.owner is not None and not body.admin:
+        if body.owner is not None and not body.unrestricted:
             limit = cfg.policy.key_max_jobs
             if sum(1 for e in active if e.owner == body.owner) >= limit:
                 raise Rejected(429, [f"this key is at its limit of {limit} jobs"])

@@ -1,5 +1,5 @@
-# Service limits. Per-key limits may lower these; only admin keys may exceed
-# the per-key defaults, never the global caps.
+# Service limits. Every key gets per_key_defaults; admin keys and keys created
+# with `mtt keys create --unrestricted` may exceed them, never the global caps.
 namespace_prefix: [openmoq, mtt]  # tool id is appended
 
 global:

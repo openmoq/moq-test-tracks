@@ -146,6 +146,26 @@ def test_keys(tmp_path):
     assert auth.revoke(db, p.key_id) and auth.verify(db, key) is None
     expired = auth.new_key(db, "bob", "view", expires_days=-1)
     assert auth.verify(db, expired) is None
+    wide = auth.verify(db, auth.new_key(db, "carol", "run", expires_days=7, unrestricted=True))
+    assert wide.unrestricted and wide.exempt and not wide.can("admin")
+    assert not p.exempt
+    for days in (None, 31):
+        with pytest.raises(ValueError, match="within 30 days"):
+            auth.new_key(db, "dave", "run", expires_days=days, unrestricted=True)
+
+
+def test_keys_table_gains_unrestricted(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.sqlite"
+    with sqlite3.connect(path) as c:
+        c.execute(
+            "CREATE TABLE keys (id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL,"
+            " secret_hash TEXT NOT NULL, created REAL NOT NULL, expires REAL, revoked REAL,"
+            " last_used REAL)"
+        )
+    db = Db(path)
+    assert auth.verify(db, auth.new_key(db, "erin", "run")).unrestricted is False
     with pytest.raises(ValueError):
         auth.new_key(db, "eve", "root")
 
@@ -214,12 +234,15 @@ def test_roles(client, keys, stub):
     run_id = auth.parse(keys["run"])[0]
     assert stub.posted[-1]["owner"] == run_id and job["owner_name"] == "run-user"
     assert stub.posted[-1]["relay"] == "moqx-main" and stub.posted[-1]["mode"] == "publish"
-    assert stub.posted[-1]["admin"] is False
-    forged = {"preset": "360p", "admin": True}
+    assert stub.posted[-1]["unrestricted"] is False
+    forged = {"preset": "360p", "unrestricted": True}
     client.post("/api/v1/jobs", json=forged, headers=bearer(keys["run"]))
-    assert stub.posted[-1]["admin"] is False  # only the caller's role sets it
+    assert stub.posted[-1]["unrestricted"] is False  # only the caller's key sets it
     client.post("/api/v1/jobs", json={"preset": "360p"}, headers=bearer(keys["admin"]))
-    assert stub.posted[-1]["admin"] is True
+    assert stub.posted[-1]["unrestricted"] is True
+    wide = auth.new_key(client.app.state.db, "wide", "run", expires_days=1, unrestricted=True)
+    client.post("/api/v1/jobs", json={"preset": "360p"}, headers=bearer(wide))
+    assert stub.posted[-1]["unrestricted"] is True
     other = auth.new_key(client.app.state.db, "other", "run")
     assert client.delete(f"/api/v1/jobs/{job['id']}", headers=bearer(other)).status_code == 403
     assert (
@@ -231,7 +254,7 @@ def test_roles(client, keys, stub):
     assert client.post("/api/v1/admin/stop-all", headers=bearer(keys["run"])).status_code == 403
     assert client.post("/api/v1/admin/stop-all", headers=bearer(keys["admin"])).status_code == 200
     actions = [r["action"] for r in client.app.state.db.query("SELECT action FROM audit")]
-    assert actions.count("job_started") == 3 and "stop_all" in actions
+    assert actions.count("job_started") == 4 and "stop_all" in actions
 
 
 def test_query_parameters_and_check(client, keys, stub):
