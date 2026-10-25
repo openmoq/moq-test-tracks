@@ -17,3 +17,26 @@ clips:
     capture_s: 120
     license: Akamai-hosted NASA TV stream, used with Akamai's permission (Will Law)
     attribution: NASA TV via Akamai
+
+  bbb_4k30:
+    title: Big Buck Bunny 4K30 (Akamai-hosted)
+    url: https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd
+    start_s: 90
+    capture_s: 120
+    license: CC-BY 3.0, Blender Foundation (www.bigbuckbunny.org); Akamai-hosted DASH ladder, top rung 4K30 about 12 Mbps
+    attribution: Big Buck Bunny © 2008 Blender Foundation | www.bigbuckbunny.org
+
+  bbb_4k60:
+    title: Big Buck Bunny 4K60
+    url: https://mirrors.mit.edu/kodi/demo-files/BBB/bbb_sunflower_2160p_60fps_normal.mp4
+    start_s: 40  # the mirror's copy ends about 170 s in
+    capture_s: 120
+    license: CC-BY 3.0, Blender Foundation (www.bigbuckbunny.org); Kodi demo-files mirror
+    attribution: Big Buck Bunny © 2008 Blender Foundation | www.bigbuckbunny.org
+
+  akamai_cmaf:
+    title: Akamai live CMAF channel
+    url: https://akamaibroadcasteruseast.akamaized.net/cmaf/live/657078/akasource/out.mpd
+    capture_s: 120
+    license: Akamai-hosted live stream, used with Akamai's permission (Will Law)
+    attribution: Akamai live channel

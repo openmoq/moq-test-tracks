@@ -19,6 +19,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 - Presets and per-parameter fallbacks for job requests (`preset=1080p60`, or only the fields that differ). Namespaces must use the `openmoq/mtt/<tool>` prefix.
 - Container image (`docker/Dockerfile`: ffmpeg with x264, x265, SVT-AV1 and Opus; aiomoqt; non-root), a hardened compose project (`deploy/compose.yaml`: Caddy with automatic HTTPS, api, runner on an internal network) and `deploy/deploy.sh <ssh-host>` for manual deploys.
 - Clip content. `media/sources.yaml` lists the deployment's clips, starting with two Akamai-hosted live channels (`akamai_test`, `nasa_tv`). `mtt media fetch <id>` records a fixed excerpt into the runner cache (HTTPS only), and `mtt media list` shows what is fetched. Clip namespaces carry the clip id after the tool id (`openmoq/mtt/<tool>/<clip>/moq_test_tracks_00/…`); the API, the dashboard and `mtt run --clip` take `clip=<id>`, and `GET /api/v1/clips` lists the clips. Jobs encode the recording to the namespace's shape with the credit line in the picture; the aiomoqt adapter accepts `clip`.
+- High-fidelity clips: `bbb_4k30` (Akamai-hosted Big Buck Bunny DASH, 4K30 about 12 Mbps), `bbb_4k60` (Big Buck Bunny 4K60) and `akamai_cmaf` (Akamai live CMAF, 720p29.97). Clips take `start_s` to begin the recording past a file's opening, and credits may use `|` and `©`.
 
 ## Changed
 
