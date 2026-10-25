@@ -29,7 +29,7 @@ clips:
   bbb_4k60:
     title: Big Buck Bunny 4K60
     url: https://mirrors.mit.edu/kodi/demo-files/BBB/bbb_sunflower_2160p_60fps_normal.mp4
-    start_s: 90
+    start_s: 40  # the mirror's copy ends about 170 s in
     capture_s: 120
     license: CC-BY 3.0, Blender Foundation (www.bigbuckbunny.org); Kodi demo-files mirror
     attribution: Big Buck Bunny © 2008 Blender Foundation | www.bigbuckbunny.org
