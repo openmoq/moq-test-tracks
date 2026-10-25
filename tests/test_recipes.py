@@ -97,3 +97,23 @@ def test_mp4_loop_is_whole_groups():
 def test_clip_needs_mezzanine():
     with pytest.raises(RecipeError):
         source_command(_spec(content="clip"), "mpegts", "o.ts")
+
+
+CLIP = {"id": "demo", "path": "/cache/clips/demo-abc.mkv", "attribution": "Demo credit"}
+
+
+def test_clip_encodes_the_mezzanine_to_the_shape():
+    argv = source_command(_spec(content="clip"), "mp4", "o.mp4", CLIP)
+    assert "lavfi" not in argv
+    i = argv.index("-i")
+    assert argv[i - 2 : i + 2] == ["-stream_loop", "-1", "-i", CLIP["path"]]
+    assert argv[argv.index("-map") + 1] == "0:v:0" and "0:a:0" in argv
+    graph = argv[argv.index("-filter:v") + 1]
+    assert graph.startswith("fps=30/1,scale=1280:720:force_original_aspect_ratio=decrease")
+    assert "pad=1280:720" in graph and "text='Demo credit'" in graph
+    assert _value(argv, "-c:v") == "libx264" and _value(argv, "-g") == "60"
+    assert _value(argv, "-c:a") == "aac" and _value(argv, "-t") == "60.000"
+    live = source_command(_spec(content="clip"), "mpegts", "o.ts", CLIP)
+    assert live[live.index("-stream_loop") - 1] == "-re"
+    other = source_command(_spec(content="clip"), "mp4", "o.mp4", {**CLIP, "path": "/x.mkv"})
+    assert other != argv  # a new recording gets a new cache key

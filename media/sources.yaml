@@ -1,0 +1,19 @@
+# Clips this deployment serves for content `clip`. A clip's id is the
+# namespace prefix field after the tool id:
+#   openmoq/mtt/<tool>/<clip id>/moq_test_tracks_00/…
+# `mtt media fetch <id>` records capture_s seconds from url into the runner
+# cache; jobs encode that recording to each requested shape.
+clips:
+  akamai_test:
+    title: Akamai test channel
+    url: https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8
+    capture_s: 120
+    license: Akamai-hosted live stream, used with Akamai's permission (Will Law)
+    attribution: Akamai test channel
+
+  nasa_tv:
+    title: NASA TV
+    url: https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8
+    capture_s: 120
+    license: Akamai-hosted NASA TV stream, used with Akamai's permission (Will Law)
+    attribution: NASA TV via Akamai

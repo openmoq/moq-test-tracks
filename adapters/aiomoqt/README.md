@@ -16,7 +16,7 @@ publishes but does not encode, so the service supplies the source media.
 | `ttl_s`, `duration_s` | `-t` = `duration_s` if > 0, else `ttl_s` |
 | Timing (draft §Timing) | `--timestamp-mapping` |
 | packaging `loc`, video `h264` / `h264cb` | source `mpegts` → `--ts <fifo>` |
-| other `loc` video; `cmaf`, `locmaf` | source `mp4` → `--mp4 <file> --loop --packaging loc\|cmaf\|locmaf` |
+| other `loc` video; `cmaf`, `locmaf`; content `clip` | source `mp4` → `--mp4 <file> --loop --packaging loc\|cmaf\|locmaf` |
 | video forwarding 1 | `--video-subgroups object` |
 | audio frames per group | `--audio-frames-per-group N` |
 | audio forwarding 1 | `--audio-subgroups object` |

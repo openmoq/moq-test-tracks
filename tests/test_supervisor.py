@@ -39,7 +39,7 @@ FAKE_ADAPTER = textwrap.dedent(
         if content == "bars":
             print(json.dumps({{"accept": False, "reasons": [{{"field": "content", "message": "no"}}]}}))
             sys.exit(64)
-        print(json.dumps({{"accept": True, "source": req["clip"], "argv": ["fake"]}}))
+        print(json.dumps({{"accept": True, "source": req.get("test_source"), "argv": ["fake"]}}))
         sys.exit(0)
     open(os.path.join(os.environ["MTT_JOB_DIR"], "env.json"), "w").write(json.dumps(sorted(os.environ)))
     src = req["source"]
@@ -79,7 +79,7 @@ def _job(tool, tmp_path, ttl=30, source=None, **changes):
     req = build(
         "j_test", namespace, spec, RELAY, transport="moqt", draft=18, mode="publish", ttl_s=ttl
     )
-    req["clip"] = source  # the fake adapter echoes this as its requested source
+    req["test_source"] = source  # the fake adapter echoes this as its requested source
     return Job(tool, req, spec, tmp_path / "jobs", tmp_path / "cache")
 
 
@@ -205,7 +205,7 @@ def fake_render(tmp_path, monkeypatch):
     monkeypatch.setattr(
         recipes,
         "source_command",
-        lambda spec, fmt, out: [sys.executable, "-c", script, str(out), str(counter)],
+        lambda spec, fmt, out, clip=None: [sys.executable, "-c", script, str(out), str(counter)],
     )
     return counter
 

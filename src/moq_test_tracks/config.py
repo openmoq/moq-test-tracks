@@ -2,14 +2,16 @@
 # This source code is licensed under the Apache 2.0 license found in the
 # LICENSE file in the root directory of this source tree.
 
-# Loads config/*.yaml and adapters/<id>/manifest.yaml, and checks a job
-# against the relay allowlist, tool capabilities and policy caps.
+# Loads config/*.yaml, adapters/<id>/manifest.yaml and media/sources.yaml,
+# and checks a job against the relay allowlist, tool capabilities and policy
+# caps.
 
 from __future__ import annotations
 
 import os
+import re
 import signal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
 
@@ -19,6 +21,8 @@ from .spec.fields import DATAGRAM, TrackSpec
 
 CONTRACT_VERSION = 1
 MODES = ("namespace", "publish")
+CLIP_ID = re.compile(r"[a-z0-9_]+")
+ATTRIBUTION = re.compile(r"[\w .()&/-]{1,80}")  # drawn verbatim by ffmpeg drawtext
 
 
 @dataclass(frozen=True)
@@ -59,12 +63,27 @@ class Policy:
 
 
 @dataclass(frozen=True)
+class Clip:
+    id: str
+    title: str
+    url: str  # fetched by `mtt media fetch`, never by API callers
+    capture_s: int  # seconds recorded from the source into the mezzanine
+    license: str
+    attribution: str  # shown in the picture
+
+
+@dataclass(frozen=True)
 class Config:
     root: Path
     relays: dict[str, Relay]
     default_relay: str
     tools: dict[str, Tool]
     policy: Policy
+    clips: dict[str, Clip] = field(default_factory=dict)
+
+    def prefix(self, tool: str, clip: str | None = None) -> tuple[str, ...]:
+        """Namespace prefix for a tool, plus the clip id when the content is clip."""
+        return (*self.policy.namespace_prefix, tool, *((clip,) if clip else ()))
 
 
 def find_root(start: Path | None = None) -> Path:
@@ -81,6 +100,33 @@ def find_root(start: Path | None = None) -> Path:
 def _yaml(path: Path) -> dict:
     with path.open() as f:
         return yaml.safe_load(f) or {}
+
+
+def _clips(path: Path) -> dict[str, Clip]:
+    clips = {}
+    doc = _yaml(path) if path.is_file() else {}
+    for cid, c in (doc.get("clips") or {}).items():
+        clip = Clip(
+            id=cid,
+            title=c.get("title", cid),
+            url=c["url"],
+            capture_s=int(c.get("capture_s", 120)),
+            license=c["license"],
+            attribution=c["attribution"],
+        )
+        problems = []
+        if not CLIP_ID.fullmatch(cid):
+            problems.append("id must match [a-z0-9_]+")
+        if not clip.url.startswith("https://"):
+            problems.append("url must be https")
+        if not 10 <= clip.capture_s <= 600:
+            problems.append("capture_s must be 10-600")
+        if not ATTRIBUTION.fullmatch(clip.attribution):
+            problems.append("attribution allows letters, digits, space and .()&/- (up to 80)")
+        if problems:
+            raise ValueError(f"{path} clip {cid}: {'; '.join(problems)}")
+        clips[cid] = clip
+    return clips
 
 
 def load(root: Path | None = None) -> Config:
@@ -129,7 +175,9 @@ def load(root: Path | None = None) -> Config:
         global_max_ttl_s=int(caps.get("max_ttl_s", 86400)),
         key_max_jobs=int(per_key.get("max_jobs", 2)),
     )
-    return Config(root, relays, relays_doc.get("default", next(iter(relays))), tools, policy)
+    clips = _clips(root / "media" / "sources.yaml")
+    default = relays_doc.get("default", next(iter(relays)))
+    return Config(root, relays, default, tools, policy, clips)
 
 
 def job_errors(

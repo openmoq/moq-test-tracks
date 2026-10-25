@@ -27,6 +27,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..config import Config, job_errors
+from ..content import media
 from ..spec.fields import NamespaceError, TrackSpec
 from ..spec.namespace import Namespace, decode, from_text, render, to_slash
 from .request import build as build_request
@@ -157,6 +158,7 @@ class Registry:
             raise Rejected(422, [str(e)]) from None
         if not isinstance(decoded.spec, TrackSpec):
             raise Rejected(422, [f"{decoded.protocol} jobs are not supported yet"])
+        clip = self._clip(decoded.prefix, decoded.spec, tool.id)
         draft = body.draft or relay.default_draft
         ttl = body.ttl_s or cfg.policy.default_ttl_s
         errors = job_errors(
@@ -165,12 +167,28 @@ class Registry:
         )  # fmt: skip
         if errors:
             raise Rejected(422, errors)
-        return tool, relay, namespace, decoded.spec, draft, ttl
+        return tool, relay, namespace, decoded.spec, draft, ttl, clip
 
-    def _job(self, body, tool, relay, namespace, spec, draft, ttl, work: Path) -> Job:
+    def _clip(self, prefix: tuple[bytes, ...], spec: TrackSpec, tool: str) -> dict | None:
+        """The request's clip for clip content: its id is the prefix field after the tool."""
+        base = len(self.cfg.prefix(tool))
+        if spec.content != "clip":
+            return None
+        cid = prefix[base].decode() if len(prefix) == base + 1 else None
+        clip = self.cfg.clips.get(cid or "")
+        if clip is None:
+            raise Rejected(422, ["clip content needs a configured clip id after the tool id"])
+        mezz = media.mezzanine(self.cache, clip.id)
+        if mezz is None:
+            raise Rejected(
+                422, [f"clip {clip.id} has not been fetched (mtt media fetch {clip.id})"]
+            )
+        return {"id": clip.id, "path": str(mezz.path), "attribution": clip.attribution}
+
+    def _job(self, body, tool, relay, namespace, spec, draft, ttl, clip, work: Path) -> Job:
         req = build_request(
             f"j_{secrets.token_hex(6)}", namespace, spec, relay,
-            transport=body.transport, draft=draft, mode=body.mode, ttl_s=ttl,
+            transport=body.transport, draft=draft, mode=body.mode, ttl_s=ttl, clip=clip,
         )  # fmt: skip
         return Job(tool, req, spec, work, self.cache, nice=self.nice)
 
@@ -187,9 +205,9 @@ class Registry:
 
     async def check(self, body: JobIn) -> dict:
         """Validate and ask the adapter, without starting anything."""
-        tool, relay, namespace, spec, draft, ttl = self._validate(body)
+        tool, relay, namespace, spec, draft, ttl, clip = self._validate(body)
         existing = self._find(relay.id, namespace)
-        job = self._job(body, tool, relay, namespace, spec, draft, ttl, self.work / ".check")
+        job = self._job(body, tool, relay, namespace, spec, draft, ttl, clip, self.work / ".check")
         try:
             check = await self._adapter_check(job)
         finally:
@@ -208,7 +226,7 @@ class Registry:
     async def submit(self, body: JobIn) -> tuple[Entry, bool]:
         """Start a job, or return the active one with the same relay and namespace."""
         cfg = self.cfg
-        tool, relay, namespace, spec, draft, ttl = self._validate(body)
+        tool, relay, namespace, spec, draft, ttl, clip = self._validate(body)
         existing = self._find(relay.id, namespace)
         if existing is not None:
             return existing, False
@@ -221,7 +239,7 @@ class Registry:
             limit = cfg.policy.key_max_jobs
             if sum(1 for e in active if e.owner == body.owner) >= limit:
                 raise Rejected(429, [f"this key is at its limit of {limit} jobs"])
-        job = self._job(body, tool, relay, namespace, spec, draft, ttl, self.work)
+        job = self._job(body, tool, relay, namespace, spec, draft, ttl, clip, self.work)
         check = await self._adapter_check(job)
         live = sum(1 for e in active if e.check.source == "mpegts")
         if check.source == "mpegts" and live >= cfg.policy.max_live_encodes:
@@ -343,6 +361,22 @@ def create_app(cfg: Config, *, token: str, work: Path, cache: Path, nice: int = 
             return await registry.check(body)
         except Rejected as e:
             raise reject(e) from None
+
+    @app.get("/clips", dependencies=[Depends(auth)])
+    async def clips() -> list[dict]:
+        out = []
+        for c in registry.cfg.clips.values():
+            mezz = media.mezzanine(registry.cache, c.id)
+            out.append(
+                {
+                    "id": c.id,
+                    "title": c.title,
+                    "license": c.license,
+                    "attribution": c.attribution,
+                    "fetched": mezz.summary() if mezz else None,
+                }
+            )
+        return out
 
     @app.get("/jobs", dependencies=[Depends(auth)])
     async def list_jobs(active: bool = False) -> list[dict]:

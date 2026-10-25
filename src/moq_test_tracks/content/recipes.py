@@ -63,6 +63,19 @@ def _audio_input(spec: TrackSpec) -> list[str]:
     return ["-f", "lavfi", "-i", graph]
 
 
+def _clip_video_filter(spec: TrackSpec, attribution: str) -> list[str]:
+    """Clip picture scaled and padded to the spec's size and rate, with its credit line."""
+    w, h = spec.video_width, spec.video_height
+    fontsize = max(10, h // 36)
+    graph = (
+        f"fps={_rate(spec.fps)},"
+        f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,"
+        f"drawtext=fontfile={FONT}:fontsize={fontsize}:fontcolor=white@0.8:box=1:boxcolor=black@0.4"
+        f":x=8:y=h-th-8:text='{attribution}'"
+    )
+    return ["-filter:v", graph]
+
+
 def _video_encoder(spec: TrackSpec, fmt: str) -> list[str]:
     gop = int(spec.frames_per_group)
     kbps = f"{spec.video_kbps}k"
@@ -110,24 +123,36 @@ def loop_seconds(spec: TrackSpec) -> Fraction:
     return Fraction(groups * spec.group_ms, 1000)
 
 
-def source_command(spec: TrackSpec, fmt: str, output: str | Path) -> list[str]:
+def source_command(
+    spec: TrackSpec, fmt: str, output: str | Path, clip: dict | None = None
+) -> list[str]:
     """ffmpeg argv producing the spec's media: a live MPEG-TS stream, or a
-    loopable non-fragmented mp4 of loop_seconds() length."""
+    loopable non-fragmented mp4 of loop_seconds() length. Clip content reads
+    the request's clip mezzanine ({"path", "attribution"})."""
     if fmt not in FORMATS:
         raise RecipeError(f"unknown source format {fmt}")
-    if spec.content == "clip":
-        raise RecipeError("clip sources need a fetched mezzanine")
     argv = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "warning", "-y"]
     live = fmt == "mpegts"
     inputs, maps, encoders = [], [], []
-    if spec.has_video:
-        inputs += (["-re"] if live else []) + _video_input(spec)
-        encoders += _video_encoder(spec, fmt)
-    if spec.has_audio:
-        inputs += (["-re"] if live else []) + _audio_input(spec)
-        encoders += _audio_encoder(spec)
-    for i in range(int(spec.has_video) + int(spec.has_audio)):
-        maps += ["-map", str(i)]
+    if spec.content == "clip":
+        if not clip:
+            raise RecipeError("clip content needs a fetched clip")
+        inputs += (["-re"] if live else []) + ["-stream_loop", "-1", "-i", str(clip["path"])]
+        if spec.has_video:
+            maps += ["-map", "0:v:0"]
+            encoders += _clip_video_filter(spec, clip["attribution"]) + _video_encoder(spec, fmt)
+        if spec.has_audio:
+            maps += ["-map", "0:a:0"]
+            encoders += _audio_encoder(spec)
+    else:
+        if spec.has_video:
+            inputs += (["-re"] if live else []) + _video_input(spec)
+            encoders += _video_encoder(spec, fmt)
+        if spec.has_audio:
+            inputs += (["-re"] if live else []) + _audio_input(spec)
+            encoders += _audio_encoder(spec)
+        for i in range(int(spec.has_video) + int(spec.has_audio)):
+            maps += ["-map", str(i)]
     argv += inputs + maps + encoders
     if live:
         argv += ["-f", "mpegts", "-muxdelay", "0", "-muxpreload", "0", str(output)]
