@@ -20,8 +20,9 @@ openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/catalog/h264/720/30/2500/2000/0/a
 └──── prefix ─────┘ └──── version ───┘ └─────────────── characteristic fields 1–16 ────────────────┘
 ```
 
-> **Status: planning.** Nothing runs yet. See [docs/design.md](docs/design.md)
-> for the architecture, security model and phases.
+> **Status: in testing** at <https://moq-test.ci.openmoq.org>. Access is by
+> API key; see [Getting started](#getting-started). The architecture, security
+> model and phases are in [docs/design.md](docs/design.md).
 
 ## Pieces
 
@@ -29,8 +30,8 @@ openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/catalog/h264/720/30/2500/2000/0/a
   ([repo](https://github.com/gmarzot/draft-marzot-moq-test-tracks)) specifies the namespace fields, track names, media shape and generator
   behavior. It extends the approach of
   [draft-afrind-moq-test](https://datatracker.ietf.org/doc/draft-afrind-moq-test/)
-  from synthetic objects to real media. The service serves moq-test-00
-  tracks too.
+  from synthetic objects to real media. Serving moq-test-00 tracks is
+  planned.
 - **The service.** A web dashboard and API at `moq-test.ci.openmoq.org` to
   start, watch and stop generator jobs. Access is by API key.
 - **Tools.** Publisher tools plug in through the
@@ -41,13 +42,34 @@ openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/catalog/h264/720/30/2500/2000/0/a
   ([config/relays.yaml](config/relays.yaml)). The default is the OpenMOQ CI
   relay, moqx-main.
 
+## Getting started
+
+1. **Get a key.** The service operators issue keys; open an issue in this
+   repository to ask for one. A `run` key can start and stop its own jobs.
+2. **Start a job.** Log in to the dashboard with the key, pick a shape, and
+   start it. Or use the [API](docs/api.md):
+   ```sh
+   curl -s -X POST -H "Authorization: Bearer $MTT_KEY" \
+     "https://moq-test.ci.openmoq.org/api/v1/jobs?preset=720p30&ttl=600"
+   ```
+   The response carries the job's namespace and relay. Jobs end at their TTL,
+   or with `DELETE /api/v1/jobs/<id>`.
+3. **Subscribe.** Point any MoQT player or client at the job's relay and
+   namespace; the track names are `catalog`, `video` and `audio`. On
+   moqx-main, subscribe with draft 18 (see [docs/api.md](docs/api.md#subscribing)).
+
+The service names its namespaces `openmoq/mtt/<tool>/moq_test_tracks_00/…`,
+plus a clip id after the tool for clips. The draft's examples use the prefix
+`openmoq/mtt`; the fields from `moq_test_tracks_00` on are the same.
+
 ## Layout
 
 | Path | Contents |
 |------|----------|
-| [docs/](docs/) | Design, API, tool contract, operations |
+| [docs/](docs/) | [API](docs/api.md), [tool contract](docs/tool-contract.md), [design](docs/design.md) |
 | [adapters/](adapters/) | One directory per tool: manifest, adapter, notes |
 | [config/](config/) | Enabled tools, relay allowlist, policy limits |
+| [media/](media/) | Clip sources (`sources.yaml`) |
 | [src/moq_test_tracks/](src/moq_test_tracks/) | Service, runner, namespace codec, adapters |
 
 ## License

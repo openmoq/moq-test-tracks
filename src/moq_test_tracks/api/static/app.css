@@ -45,6 +45,7 @@ header {
 }
 
 h1 { font-size: 18px; margin: 0; flex: 1; }
+header nav { display: flex; gap: 12px; font-size: 14px; }
 h2 { font-size: 16px; margin: 24px 0 12px; }
 h3 { font-size: 14px; margin: 8px 0; flex: 1; overflow-wrap: anywhere; }
 
@@ -79,6 +80,7 @@ legend { color: var(--dim); padding: 0 4px; }
 code { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
 .dim { color: var(--dim); }
 .error { color: var(--danger); min-height: 1em; }
+.hint { font-size: 14px; color: var(--dim); }
 .actions { display: flex; gap: 8px; }
 .heading { display: flex; align-items: center; gap: 12px; }
 

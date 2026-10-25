@@ -107,9 +107,9 @@ containers.
 The namespace codec is a pure module with no dependencies, so that tools and
 probes can import it.
 
-## API (sketch)
+## API
 
-Calls that change state are POST or DELETE. A GET never changes state, so
+The reference is [api.md](api.md). Calls that change state are POST or DELETE. A GET never changes state, so
 crawlers, link previews and CSRF can't start jobs.
 
 | Method | Path | Auth | Purpose |
