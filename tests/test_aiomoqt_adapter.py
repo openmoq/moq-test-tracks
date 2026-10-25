@@ -87,6 +87,14 @@ def test_accepts(changes, source, flags):
     assert p["argv"][i : i + len(flags)] == flags
 
 
+def test_clip_uses_the_mp4_loop():
+    req = _request(content="clip")
+    req["clip"] = {"id": "demo", "path": "/cache/clips/demo.mkv", "attribution": "Demo"}
+    p = adapter.plan(req)
+    assert p["accept"] and p["source"] == "mp4"
+    assert p["argv"][p["argv"].index("--packaging") + 1] == "loc"
+
+
 def test_namespace_mode():
     assert "--pub-ns" in adapter.plan(_request(mode="namespace"))["argv"]
 

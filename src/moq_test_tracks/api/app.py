@@ -131,6 +131,32 @@ def create_app(
     def named(job: dict, names: dict[str, str]) -> dict:
         return {**job, "owner_name": names.get(job.get("owner") or "", job.get("owner"))}
 
+    def resolve_namespace(params: dict, preset: str | None, tool: str, clip: str | None):
+        """Namespace from a preset and parameters; clip=<id> selects that clip's content."""
+        if clip is not None:
+            if clip not in cfg.clips:
+                raise ValueError(f"unknown clip {clip}")
+            if params.get("content", "clip") != "clip":
+                raise ValueError("clip=<id> needs content clip")
+            params = {**params, "content": "clip"}
+        spec = presets.resolve(params, preset)
+        if spec.content == "clip" and clip is None:
+            raise ValueError("content clip needs clip=<id>")
+        return encode(spec, cfg.prefix(tool, clip)), spec
+
+    def check_prefix(decoded, tool: str) -> None:
+        """The policy prefix for the tool, plus a configured clip id for clip content."""
+        prefix = tuple(f.decode(errors="replace") for f in decoded.prefix)
+        base = cfg.prefix(tool)
+        if getattr(decoded.spec, "content", None) == "clip":
+            clip = prefix[-1] if len(prefix) == len(base) + 1 else None
+            if prefix[: len(base)] != base or clip is None:
+                raise ValueError(f"the namespace prefix must be {'/'.join(base)}/<clip id>")
+            if clip not in cfg.clips:
+                raise ValueError(f"unknown clip {clip}")
+        elif prefix != base:
+            raise ValueError(f"the namespace prefix must be {'/'.join(base)}")
+
     async def job_body(request: Request) -> dict:
         """Runner request from a JSON body or query parameters: a namespace, or
         a preset and parameters resolved under the policy prefix for the tool."""
@@ -145,17 +171,15 @@ def create_app(
             **data.get("params", {}),
         }
         tool = data.get("tool") or query.get("tool") or "aiomoqt"
-        prefix = (*cfg.policy.namespace_prefix, tool)
         ns_text = data.get("namespace") or query.get("ns")
         try:
             if ns_text:
                 namespace = from_text(ns_text)
-                decoded = decode(namespace)
-                if decoded.prefix != tuple(p.encode() for p in prefix):
-                    raise ValueError(f"the namespace prefix must be {'/'.join(prefix)}")
+                check_prefix(decode(namespace), tool)
             else:
-                spec = presets.resolve(params, data.get("preset") or query.get("preset"))
-                namespace = encode(spec, prefix)
+                preset = data.get("preset") or query.get("preset")
+                clip = data.get("clip") or query.get("clip") or None
+                namespace, _ = resolve_namespace(params, preset, tool, clip)
         except (ValueError, NamespaceError) as e:
             raise HTTPException(422, {"errors": _errors(e)}) from None
 
@@ -242,8 +266,9 @@ def create_app(
         params = {k: v for k, v in query.items() if k in presets.PARAMS}
         tool = query.get("tool", "aiomoqt")
         try:
-            spec = presets.resolve(params, query.get("preset"))
-            ns = encode(spec, (*cfg.policy.namespace_prefix, tool))
+            ns, spec = resolve_namespace(
+                params, query.get("preset"), tool, query.get("clip") or None
+            )
         except (ValueError, NamespaceError) as e:
             raise HTTPException(422, {"errors": _errors(e)}) from None
         return {
@@ -267,6 +292,10 @@ def create_app(
             {"id": t.id, "name": t.name, "version": t.version, "capabilities": t.capabilities}
             for t in cfg.tools.values()
         ]
+
+    @app.get("/api/v1/clips")
+    async def clips(p: Principal = as_view) -> list[dict]:
+        return await call_runner("GET", "/clips")
 
     @app.get("/api/v1/relays")
     async def relays(p: Principal = as_view) -> dict:

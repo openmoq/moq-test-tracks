@@ -35,6 +35,8 @@ class StubRunner:
         if path == "/check":
             body = json.loads(request.content)
             return httpx.Response(200, json={"accept": True, "plan": ["pub", body["namespace"]]})
+        if path == "/clips":
+            return httpx.Response(200, json=[{"id": "nasa_tv", "fetched": None}])
         if path == "/stop-all":
             return httpx.Response(200, json={"stopped": len(self.jobs)})
         if path == "/jobs" and method == "POST":
@@ -251,6 +253,29 @@ def test_namespace_prefix_is_enforced(client, keys):
         client.post("/api/v1/jobs", json={"namespace": ok}, headers=bearer(keys["run"])).status_code
         == 201
     )
+
+
+def test_clip_namespaces(client, keys):
+    run = bearer(keys["run"])
+    r = client.get("/api/v1/namespace", params={"clip": "nasa_tv", "h": "720"}, headers=run)
+    assert r.status_code == 200
+    ns = r.json()["namespace"]
+    assert ns.startswith("openmoq/mtt/aiomoqt/nasa_tv/moq_test_tracks_00/") and ns.endswith(
+        "/clip/0"
+    )
+    assert client.post("/api/v1/jobs", json={"namespace": ns}, headers=run).status_code == 201
+    assert client.post("/api/v1/jobs", json={"clip": "nasa_tv"}, headers=run).status_code == 201
+    for bad, text in (
+        ({"clip": "bogus"}, "unknown clip bogus"),
+        ({"params": {"content": "clip"}}, "needs clip=<id>"),
+        ({"clip": "nasa_tv", "params": {"content": "bars"}}, "needs content clip"),
+        ({"namespace": ns.replace("/nasa_tv/", "/bogus/")}, "unknown clip bogus"),
+        ({"namespace": ns.replace("/clip/0", "/bars/0")}, "prefix must be openmoq/mtt/aiomoqt"),
+        ({"namespace": ns.replace("nasa_tv/", "")}, "/<clip id>"),
+    ):
+        r = client.post("/api/v1/jobs", json=bad, headers=run)
+        assert r.status_code == 422 and text in r.text, (bad, r.text)
+    assert client.get("/api/v1/clips", headers=bearer(keys["view"])).json()[0]["id"] == "nasa_tv"
 
 
 def test_login_session_and_origin(client, keys):

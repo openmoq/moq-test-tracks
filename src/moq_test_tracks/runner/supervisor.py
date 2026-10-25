@@ -175,7 +175,7 @@ class Job:
             with contextlib.suppress(FileNotFoundError):
                 fifo.unlink()
             os.mkfifo(fifo)
-            argv = recipes.source_command(self.spec, "mpegts", fifo)
+            argv = recipes.source_command(self.spec, "mpegts", fifo, self.request.get("clip"))
             log = (self.dir / "ffmpeg.log").open("ab")
             self._source = await asyncio.create_subprocess_exec(
                 *argv,
@@ -189,8 +189,9 @@ class Job:
             self.request["source"] = {"format": fmt, "path": str(fifo), "fifo": True, "loop": False}
             return
         if fmt == "mp4":
+            clip = self.request.get("clip")
             key = hashlib.sha256(
-                json.dumps(recipes.source_command(self.spec, "mp4", "OUT")).encode()
+                json.dumps(recipes.source_command(self.spec, "mp4", "OUT", clip)).encode()
             ).hexdigest()[:24]
             path = self.cache_dir / f"{key}.mp4"
             async with _RENDERS.setdefault(key, asyncio.Lock()):
@@ -205,7 +206,7 @@ class Job:
         tmp = path.with_name(f"{path.stem}.{self.request['job_id']}.part.mp4")
         try:
             proc = await asyncio.create_subprocess_exec(
-                *recipes.source_command(self.spec, "mp4", tmp),
+                *recipes.source_command(self.spec, "mp4", tmp, self.request.get("clip")),
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,

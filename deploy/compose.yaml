@@ -58,6 +58,7 @@ services:
     environment:
       MTT_RUNNER_TOKEN: ${MTT_RUNNER_TOKEN:?run deploy.sh to generate secrets}
       MTT_JOB_NICE: "10"
+      MTT_VAR: /var/lib/mtt/var
     volumes: [mtt-runner:/var/lib/mtt]
     networks: [internal, egress]
     # Shares the host with a CI runner: half the CPUs, and jobs run at nice 10.

@@ -44,6 +44,7 @@ def build(
     mode: str,
     ttl_s: int,
     tls_verify: bool = True,
+    clip: dict | None = None,
 ) -> dict:
     return {
         "contract_version": CONTRACT_VERSION,
@@ -57,6 +58,6 @@ def build(
         "mode": mode,
         "ttl_s": ttl_s,
         "source": None,
-        "clip": None,
+        "clip": clip,
         "tls": {"verify": tls_verify, "ca_file": None},
     }

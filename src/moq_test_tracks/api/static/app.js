@@ -48,6 +48,7 @@ function jobRequest() {
   const ttl = $("ttl").value.trim();
   return {
     preset: $("preset").value || undefined,
+    clip: $("clip").value || undefined,
     params: params(),
     tool: $("tool").value,
     relay: $("relay").value,
@@ -60,6 +61,7 @@ function jobRequest() {
 async function preview() {
   const q = new URLSearchParams({ ...params(), tool: $("tool").value });
   if ($("preset").value) q.set("preset", $("preset").value);
+  if ($("clip").value) q.set("clip", $("clip").value);
   $("plan").hidden = true;
   try {
     const r = await api("GET", "/api/v1/namespace?" + q);
@@ -195,14 +197,24 @@ async function showApp() {
   $("logout").hidden = false;
   $("who").textContent = `${me.name} (${me.role})`;
   $("stop-all").hidden = me.role !== "admin";
-  const [tools, relays, presets] = await Promise.all([
+  const [tools, relays, presets, clips] = await Promise.all([
     api("GET", "/api/v1/tools"),
     api("GET", "/api/v1/relays"),
     api("GET", "/api/v1/presets"),
+    api("GET", "/api/v1/clips").catch(() => []),
   ]);
   $("tool").replaceChildren(...tools.map((t) => new Option(`${t.name} (${t.version})`, t.id)));
   $("relay").replaceChildren(...relays.relays.map((r) => new Option(r.name, r.id, false, r.id === relays.default)));
   $("preset").replaceChildren(new Option("(none)", ""), ...Object.keys(presets.presets).map((p) => new Option(p, p)));
+  $("clip").replaceChildren(
+    new Option("(none)", ""),
+    ...clips.map((c) => {
+      const opt = new Option(c.fetched ? c.title : `${c.title} (not fetched)`, c.id);
+      opt.disabled = !c.fetched;
+      opt.title = `${c.attribution}. ${c.license}`;
+      return opt;
+    }),
+  );
   preview();
   refresh();
   timer = setInterval(refresh, 3000);

@@ -142,6 +142,8 @@ Query parameters:
 
 - Alternatives to field parameters: `preset=<name>`, or `ns=` with a full
   namespace.
+- `clip=<id>` selects a clip from `media/sources.yaml`: it sets `content` to
+  `clip` and adds the clip id to the prefix.
 - Run parameters: `tool`, `relay`, `mode` (`namespace` | `publish`), `draft`,
   `transport` (`moqt` | `webtransport`), `ttl`, `isolate`. FORWARD is not a
   parameter: tools send 1 and follow the relay.
@@ -212,23 +214,32 @@ values.
 Synthetic content stays the default. For `clip`:
 
 - **Catalog of clips:** `media/sources.yaml` lists each clip: id
-  (`[a-z0-9_]+`), title, license, attribution text, official URL, SHA-256,
-  and native resolution and frame rate.
-- **Not in git:** clips run to hundreds of MB and GitHub caps files at
-  100 MB. `mtt media fetch <id>` downloads from the official URL, verifies
-  the SHA-256 and writes a mezzanine file to the runner's cache volume. An
-  image build can bake clips in.
-- **Encoding:** jobs encode from the mezzanine like any other source, live
-  or as cached loops. The clip id is the prefix field after the tool id:
-  `openmoq/mtt/<tool_id>/<clip_id>/moq_test_tracks_00/…`.
+  (`[a-z0-9_]+`), title, HTTPS URL, `capture_s`, license and attribution
+  text.
+- **Not in git:** recordings run to hundreds of MB. In the runner container,
+  `mtt media fetch <id>` records `capture_s` seconds of the URL's best
+  rendition, as is, into the cache volume (`clips/<id>-<sha256 prefix>.mkv`
+  plus `<id>.json` with the SHA-256, capture time and stream summary). It
+  checks for one video and one audio stream and the full duration. ffmpeg
+  may only open `https`, `tls`, `tcp` and `crypto`, so a playlist cannot
+  reach local files or plain-http addresses. Only operators fetch; API
+  callers name a configured clip id and never a URL. `mtt media list` shows
+  what is fetched.
+- **Live sources:** a fixed recording, rather than the live stream, keeps a
+  test's picture and sound the same on every run.
+- **Encoding:** jobs encode the newest recording to the namespace's shape:
+  scaled and padded to the height, converted to the frame rate, with the
+  credit line drawn in. The aiomoqt adapter always uses the cached mp4 loop
+  for clips, so each shape encodes once. The clip id is the prefix field
+  after the tool id: `openmoq/mtt/<tool_id>/<clip_id>/moq_test_tracks_00/…`.
 - **Attribution:** the open films are Creative Commons Attribution, not
   public domain. The picture carries a small credit line, the dashboard
   lists credits, and each license is checked against the text in the
   download.
-- **First clip:** Big Buck Bunny, preferring a native 30 or 60 fps release
-  to avoid frame-rate conversion. Sintel and Tears of Steel (24 fps) can
-  follow; Tears of Steel's license requires keeping the credit scroll, so it
-  loops in full.
+- **First clips:** two Akamai-hosted live channels, used with Akamai's
+  permission. Open films (Big Buck Bunny's native 60 fps release, Sintel,
+  Tears of Steel) can follow; Tears of Steel's license requires keeping the
+  credit scroll, so it loops in full.
 
 ## Job lifecycle
 

@@ -21,6 +21,7 @@ COPY --from=build /wheels /wheels
 RUN pip install --no-cache-dir --no-index /wheels/*.whl && rm -rf /wheels
 COPY config /opt/mtt/config
 COPY adapters /opt/mtt/adapters
+COPY media/sources.yaml /opt/mtt/media/sources.yaml
 ENV MTT_ROOT=/opt/mtt \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1

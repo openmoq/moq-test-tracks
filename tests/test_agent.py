@@ -4,6 +4,7 @@
 
 # Runner agent API against the fake adapter.
 
+import json
 import subprocess
 import sys
 import textwrap
@@ -39,6 +40,11 @@ def root(tmp_path):
     (tmp_path / "config" / "policy.yaml").write_text(
         "namespace_prefix: [openmoq, mtt]\nglobal: {max_jobs: 2, max_live_encodes: 2}\n"
         "per_key_defaults: {max_jobs: 1}\n"
+    )
+    (tmp_path / "media").mkdir()
+    (tmp_path / "media" / "sources.yaml").write_text(
+        "clips:\n  demo:\n    url: https://example.com/a.m3u8\n    license: test\n"
+        "    attribution: Demo credit\n"
     )
     adapter = tmp_path / "adapters" / "fake"
     adapter.mkdir(parents=True)
@@ -154,6 +160,31 @@ def test_rejections(client, body, text):
     r = client.post("/jobs", json=body, headers=AUTH)
     assert r.status_code == 422
     assert any(text in e for e in r.json()["detail"]["errors"])
+
+
+CLIP_NS = NS.replace("/fake/", "/fake/demo/").replace("/ts/0", "/clip/0")
+
+
+def test_clip_jobs(client, root):
+    clip_job = {**_job(), "namespace": CLIP_NS}
+    r = client.post("/check", json=clip_job, headers=AUTH)
+    assert r.status_code == 422 and "clip demo has not been fetched" in r.text
+    other = {**_job(), "namespace": CLIP_NS.replace("/demo/", "/other/")}
+    assert "configured clip id" in client.post("/check", json=other, headers=AUTH).text
+    clips = root / "var" / "cache" / "clips"
+    clips.mkdir(parents=True)
+    (clips / "demo-abc.mkv").write_bytes(b"x")
+    meta = {"clip": "demo", "file": "demo-abc.mkv", "sha256": "abc", "duration_s": 120.0}
+    meta |= {"captured_at": "2026-10-25T00:00:00Z", "video": {}, "audio": {}}
+    (clips / "demo.json").write_text(json.dumps(meta))
+    assert client.post("/check", json=clip_job, headers=AUTH).status_code == 200
+    job = client.post("/jobs", json=clip_job, headers=AUTH).json()
+    req = json.loads((root / "var" / "jobs" / job["id"] / "request.json").read_text())
+    path = str(clips / "demo-abc.mkv")
+    assert req["clip"] == {"id": "demo", "path": path, "attribution": "Demo credit"}
+    listed = client.get("/clips", headers=AUTH).json()
+    assert listed[0]["id"] == "demo" and listed[0]["fetched"]["sha256"] == "abc"
+    client.post("/stop-all", headers=AUTH)
 
 
 def test_key_job_limit(client):

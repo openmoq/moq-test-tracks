@@ -12,12 +12,14 @@ import json
 import os
 import secrets
 import signal
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 from .config import MODES, job_errors
 from .config import load as load_config
+from .content import media
 from .runner.request import build as build_request
 from .runner.supervisor import EXIT_REFUSED, Job, JobError
 from .spec import fields, moq_test
@@ -205,7 +207,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     relay = cfg.relays.get(args.relay or cfg.default_relay)
     if relay is None:
         return _fail([f"relay {args.relay} is not in the allowlist"])
-    prefix = from_slash(args.prefix) if args.prefix else (*cfg.policy.namespace_prefix, tool.id)
+    prefix = from_slash(args.prefix) if args.prefix else cfg.prefix(tool.id, args.clip)
     try:
         if args.ns:
             namespace = from_text(args.ns)
@@ -223,6 +225,14 @@ def cmd_run(args: argparse.Namespace) -> int:
         return _fail([str(e)])
     if not isinstance(decoded.spec, TrackSpec):
         return _fail([f"{decoded.protocol} jobs are not supported by mtt run"])
+    cache = cfg.root / "var" / "cache"
+    clip = None
+    if decoded.spec.content == "clip":
+        cid = decoded.prefix[-1].decode() if decoded.prefix else ""
+        mezz = media.mezzanine(cache, cid) if cid in cfg.clips else None
+        if mezz is None:
+            return _fail([f"clip {cid} is not configured and fetched (mtt media fetch)"])
+        clip = {"id": cid, "path": str(mezz.path), "attribution": cfg.clips[cid].attribution}
     draft = args.draft or relay.default_draft
     ttl = args.ttl or cfg.policy.default_ttl_s
     errors = job_errors(
@@ -233,11 +243,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         return _fail(errors)
     req = build_request(
         f"j_{secrets.token_hex(4)}", tuple(namespace), decoded.spec, relay,
-        transport=args.transport, draft=draft, mode=args.mode, ttl_s=ttl,
+        transport=args.transport, draft=draft, mode=args.mode, ttl_s=ttl, clip=clip,
     )  # fmt: skip
     print(f"namespace: {to_slash(namespace)}")
     work = Path(args.work) if args.work else cfg.root / "var" / "jobs"
-    job = Job(tool, req, decoded.spec, work, cfg.root / "var" / "cache")
+    job = Job(tool, req, decoded.spec, work, cache)
     return asyncio.run(_run_job(job, args.dry_run, args.verbose))
 
 
@@ -253,7 +263,7 @@ def cmd_runner(args: argparse.Namespace) -> int:
         cfg = load_config(Path(args.root) if args.root else None)
     except FileNotFoundError as e:
         return _fail([str(e)])
-    var = Path(args.var) if args.var else cfg.root / "var"
+    var = _var(args, cfg)
     app = create_app(
         cfg,
         token=token,
@@ -262,6 +272,43 @@ def cmd_runner(args: argparse.Namespace) -> int:
         nice=int(os.environ.get("MTT_JOB_NICE", "10")),
     )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    return 0
+
+
+def _var(args: argparse.Namespace, cfg) -> Path:
+    if getattr(args, "var", None):
+        return Path(args.var)
+    if env := os.environ.get("MTT_VAR"):
+        return Path(env)
+    return cfg.root / "var"
+
+
+def cmd_media(args: argparse.Namespace) -> int:
+    try:
+        cfg = load_config(Path(args.root) if args.root else None)
+    except (FileNotFoundError, ValueError) as e:
+        return _fail([str(e)])
+    cache = _var(args, cfg) / "cache"
+    if args.media_command == "list":
+        for c in cfg.clips.values():
+            mezz = media.mezzanine(cache, c.id)
+            state = (
+                f"fetched {mezz.captured_at}  {mezz.duration_s:.0f} s  "
+                f"{mezz.video.get('width')}x{mezz.video.get('height')} {mezz.video.get('codec')}"
+                if mezz
+                else "not fetched"
+            )
+            print(f"{c.id:16} {state}  {c.title}")
+        return 0
+    clip = cfg.clips.get(args.clip)
+    if clip is None:
+        return _fail([f"unknown clip {args.clip}; see media/sources.yaml"])
+    print(f"recording {clip.capture_s} s of {clip.id} from {clip.url}", file=sys.stderr)
+    try:
+        mezz = media.fetch(clip, cache)
+    except (media.MediaError, subprocess.TimeoutExpired) as e:
+        return _fail([str(e)])
+    print(json.dumps({"clip": clip.id, "path": str(mezz.path), **mezz.summary()}, indent=2))
     return 0
 
 
@@ -349,6 +396,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--draft", type=int, help="MoQT draft (default: the relay's default)")
     run.add_argument("--mode", choices=MODES, default="publish")
     run.add_argument("--ttl", type=int, help="seconds (default: policy default_ttl_s)")
+    run.add_argument("--clip", help="clip id for --content clip (adds it to the prefix)")
     run.add_argument("--prefix", help="namespace prefix in slash notation (default: policy + tool)")
     run.add_argument("--ns", help="full namespace instead of field options")
     _add_media_options(run)
@@ -371,6 +419,15 @@ def build_parser() -> argparse.ArgumentParser:
     api.add_argument("--root", help="repository root holding config/ and adapters/")
     api.add_argument("--db", help="SQLite path (default: MTT_DB or var/api.sqlite)")
     api.set_defaults(func=cmd_api)
+
+    med = sub.add_parser("media", help="clip mezzanines (media/sources.yaml)")
+    med.add_argument("--root", help="repository root holding config/ and media/")
+    med.add_argument("--var", help="state directory (default: MTT_VAR or <root>/var)")
+    med_sub = med.add_subparsers(dest="media_command", required=True)
+    fetch = med_sub.add_parser("fetch", help="record a clip from its URL into the cache")
+    fetch.add_argument("clip", help="clip id")
+    med_sub.add_parser("list", help="configured clips and what has been fetched")
+    med.set_defaults(func=cmd_media)
 
     keys = sub.add_parser("keys", help="manage API keys")
     keys.add_argument("--db", help="SQLite path (default: MTT_DB or var/api.sqlite)")

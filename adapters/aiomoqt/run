@@ -33,8 +33,8 @@ def plan(req, python=sys.executable):
         refuse("catalog", "pub_media always publishes a catalog")
     if f["video_forwarding"] == 1 and packaging == "locmaf":
         refuse("video_forwarding", "LOCMAF has one subgroup per group")
-    if f["content"] == "clip":
-        refuse("content", "clip sources are not available yet")
+    if f["content"] == "clip" and not req.get("clip"):
+        refuse("content", "clip content needs the request's clip")
     if f["init_data"] in ("track", "object"):
         refuse("init_data", "init data carriage is not selectable yet (catalog only)")
     if has_audio and f["audio_forwarding"] == 1 and packaging == "locmaf":
@@ -52,7 +52,8 @@ def plan(req, python=sys.executable):
     if reasons:
         return {"accept": False, "reasons": reasons}
 
-    live = packaging == "loc" and f["video_codec"] in ("h264", "h264cb")
+    # Clips encode once into a cached loop; only synthetic LOC H.264 encodes live.
+    live = packaging == "loc" and f["video_codec"] in ("h264", "h264cb") and f["content"] != "clip"
     source = "mpegts" if live else "mp4"
     path = (req.get("source") or {}).get("path", "<source>")
     duration = f["duration_s"] or req["ttl_s"]

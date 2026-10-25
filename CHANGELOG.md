@@ -18,6 +18,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 - `mtt keys create|list|revoke`: API keys, stored as the SHA-256 of their secret.
 - Presets and per-parameter fallbacks for job requests (`preset=1080p60`, or only the fields that differ). Namespaces must use the `openmoq/mtt/<tool>` prefix.
 - Container image (`docker/Dockerfile`: ffmpeg with x264, x265, SVT-AV1 and Opus; aiomoqt; non-root), a hardened compose project (`deploy/compose.yaml`: Caddy with automatic HTTPS, api, runner on an internal network) and `deploy/deploy.sh <ssh-host>` for manual deploys.
+- Clip content. `media/sources.yaml` lists the deployment's clips, starting with two Akamai-hosted live channels (`akamai_test`, `nasa_tv`). `mtt media fetch <id>` records a fixed excerpt into the runner cache (HTTPS only), and `mtt media list` shows what is fetched. Clip namespaces carry the clip id after the tool id (`openmoq/mtt/<tool>/<clip>/moq_test_tracks_00/…`); the API, the dashboard and `mtt run --clip` take `clip=<id>`, and `GET /api/v1/clips` lists the clips. Jobs encode the recording to the namespace's shape with the credit line in the picture; the aiomoqt adapter accepts `clip`.
 
 ## Changed
 
