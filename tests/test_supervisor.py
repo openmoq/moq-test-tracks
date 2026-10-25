@@ -130,7 +130,7 @@ def test_ttl_expires(fake_tool, tmp_path):
 def test_kill_after_grace(fake_tool, tmp_path):
     job = _job(fake_tool, tmp_path, content="noise")
     rc, _, _ = _collect(job, stop_after=0.1)
-    assert rc == 128 + signal.SIGKILL and job.state == "failed"
+    assert rc == 128 + signal.SIGKILL and job.state == "killed"
 
 
 def test_environment_is_reset(fake_tool, tmp_path, monkeypatch):

@@ -52,6 +52,8 @@ class Policy:
     max_height: int
     max_fps: int
     max_video_kbps: int
+    max_jobs: int = 6
+    max_live_encodes: int = 2
 
 
 @dataclass(frozen=True)
@@ -112,6 +114,7 @@ def load(root: Path | None = None) -> Config:
         )
     p = _yaml(root / "config" / "policy.yaml")
     per_key = p.get("per_key_defaults", {})
+    caps = p.get("global", {})
     policy = Policy(
         namespace_prefix=tuple(p.get("namespace_prefix", ("openmoq", "mtt"))),
         default_ttl_s=int(per_key.get("default_ttl_s", 1800)),
@@ -119,6 +122,8 @@ def load(root: Path | None = None) -> Config:
         max_height=int(per_key.get("max_height", 1080)),
         max_fps=int(per_key.get("max_fps", 60)),
         max_video_kbps=int(per_key.get("max_video_kbps", 8000)),
+        max_jobs=int(caps.get("max_jobs", 6)),
+        max_live_encodes=int(caps.get("max_live_encodes", 2)),
     )
     return Config(root, relays, relays_doc.get("default", next(iter(relays))), tools, policy)
 
