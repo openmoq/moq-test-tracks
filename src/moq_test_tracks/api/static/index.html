@@ -10,6 +10,12 @@
 <body>
   <header>
     <h1>moq-test-tracks</h1>
+    <nav>
+      <a href="https://github.com/openmoq/moq-test-tracks#getting-started" rel="noopener">Getting started</a>
+      <a href="https://github.com/openmoq/moq-test-tracks/blob/main/docs/api.md" rel="noopener">API</a>
+      <a href="https://gmarzot.github.io/draft-marzot-moq-test-tracks/draft-marzot-moq-test-tracks.html" rel="noopener">Draft</a>
+      <a href="https://github.com/openmoq/moq-test-tracks" rel="noopener">Source</a>
+    </nav>
     <span id="who"></span>
     <button id="logout" type="button" hidden>Log out</button>
   </header>
@@ -19,6 +25,8 @@
       <label>API key <input id="key" type="password" autocomplete="off" required></label>
       <button type="submit">Log in</button>
       <p class="error" id="login-error"></p>
+      <p class="hint">No key? The service operators issue them; open an issue in
+        <a href="https://github.com/openmoq/moq-test-tracks/issues" rel="noopener">openmoq/moq-test-tracks</a>.</p>
     </form>
   </section>
 
@@ -31,7 +39,7 @@
           <label>Tool <select id="tool"></select></label>
           <label>Relay <select id="relay"></select></label>
           <label>Transport <select id="transport"><option>moqt</option><option>webtransport</option></select></label>
-          <label>Mode <select id="mode"><option>publish</option><option>namespace</option></select></label>
+          <label>Mode <select id="mode"><option value="publish" title="PUBLISH_NAMESPACE, then PUBLISH for each track">publish</option><option value="namespace" title="PUBLISH_NAMESPACE for this one namespace; the relay forwards each SUBSCRIBE">namespace</option></select></label>
           <label>TTL (s) <input id="ttl" type="number" min="1" placeholder="default"></label>
         </div>
         <fieldset>
