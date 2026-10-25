@@ -3,12 +3,12 @@
 namespace_prefix: [openmoq, mtt]  # tool id is appended
 
 global:
-  max_jobs: 6
-  max_live_encodes: 2
+  max_jobs: 16
+  max_live_encodes: 2  # the CPU guard: live encodes cost cores, cached loops do not
   max_ttl_s: 86400
 
 per_key_defaults:
-  max_jobs: 2
+  max_jobs: 16
   default_ttl_s: 1800
   max_ttl_s: 3600
   max_height: 1080

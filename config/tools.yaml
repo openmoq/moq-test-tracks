@@ -3,4 +3,4 @@
 tools:
   aiomoqt:
     runner: runner  # compose service that hosts the tool
-    max_jobs: 6
+    max_jobs: 16
