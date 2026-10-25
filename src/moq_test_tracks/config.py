@@ -22,7 +22,7 @@ from .spec.fields import DATAGRAM, TrackSpec
 CONTRACT_VERSION = 1
 MODES = ("namespace", "publish")
 CLIP_ID = re.compile(r"[a-z0-9_]+")
-ATTRIBUTION = re.compile(r"[\w .()&/-]{1,80}")  # drawn verbatim by ffmpeg drawtext
+ATTRIBUTION = re.compile(r"[\w .()&/|©-]{1,80}")  # drawn verbatim by ffmpeg drawtext
 
 
 @dataclass(frozen=True)
@@ -70,6 +70,7 @@ class Clip:
     capture_s: int  # seconds recorded from the source into the mezzanine
     license: str
     attribution: str  # shown in the picture
+    start_s: int = 0  # where the recording starts in a file source
 
 
 @dataclass(frozen=True)
@@ -113,6 +114,7 @@ def _clips(path: Path) -> dict[str, Clip]:
             capture_s=int(c.get("capture_s", 120)),
             license=c["license"],
             attribution=c["attribution"],
+            start_s=int(c.get("start_s", 0)),
         )
         problems = []
         if not CLIP_ID.fullmatch(cid):
@@ -121,8 +123,10 @@ def _clips(path: Path) -> dict[str, Clip]:
             problems.append("url must be https")
         if not 10 <= clip.capture_s <= 600:
             problems.append("capture_s must be 10-600")
+        if not 0 <= clip.start_s <= 86400:
+            problems.append("start_s must be 0-86400")
         if not ATTRIBUTION.fullmatch(clip.attribution):
-            problems.append("attribution allows letters, digits, space and .()&/- (up to 80)")
+            problems.append("attribution allows letters, digits, space and .()&/|©- (up to 80)")
         if problems:
             raise ValueError(f"{path} clip {cid}: {'; '.join(problems)}")
         clips[cid] = clip

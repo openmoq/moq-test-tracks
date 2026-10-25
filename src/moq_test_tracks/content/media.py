@@ -73,6 +73,7 @@ def capture_command(clip: Clip, out: Path) -> list[str]:
     return [
         "ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "warning", "-y",
         "-protocol_whitelist", PROTOCOLS, "-rw_timeout", "15000000",
+        *(["-ss", str(clip.start_s)] if clip.start_s else []),
         "-i", clip.url, "-t", str(clip.capture_s), "-sn", "-dn", "-c", "copy",
         "-fs", str(MAX_BYTES), "-f", "matroska", str(out),
     ]  # fmt: skip

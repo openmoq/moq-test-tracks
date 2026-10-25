@@ -4,6 +4,7 @@
 
 # Clip config, the capture command, and storing a recording as a mezzanine.
 
+import dataclasses
 import json
 import shutil
 import subprocess
@@ -33,6 +34,7 @@ def test_repo_clips_load():
         ({"url": "http://x/a.m3u8"}, "url must be https"),
         ({"attribution": "Credit: me"}, "attribution allows"),
         ({"capture_s": 5}, "capture_s"),
+        ({"start_s": -1}, "start_s"),
     ],
 )
 def test_clip_validation(tmp_path, entry, problem):
@@ -41,6 +43,14 @@ def test_clip_validation(tmp_path, entry, problem):
     (tmp_path / "sources.yaml").write_text("clips:\n  c1:\n" + "\n".join(lines) + "\n")
     with pytest.raises(ValueError, match=problem):
         config._clips(tmp_path / "sources.yaml")
+
+
+def test_attribution_allows_license_credits(tmp_path):
+    credit = "Big Buck Bunny © 2008 Blender Foundation | www.bigbuckbunny.org"
+    (tmp_path / "sources.yaml").write_text(
+        f"clips:\n  c1:\n    url: https://x\n    license: l\n    attribution: {credit}\n"
+    )
+    assert config._clips(tmp_path / "sources.yaml")["c1"].attribution == credit
 
 
 def test_bad_clip_id(tmp_path):
@@ -57,7 +67,9 @@ def test_capture_command_is_https_only(tmp_path):
     assert "file" not in allowed and "http" not in allowed and "https" in allowed
     assert argv[argv.index("-i") + 1] == CLIP.url
     assert argv[argv.index("-t") + 1] == "12" and "-fs" in argv
-    assert argv[argv.index("-c") + 1] == "copy"
+    assert argv[argv.index("-c") + 1] == "copy" and "-ss" not in argv
+    later = media.capture_command(dataclasses.replace(CLIP, start_s=90), tmp_path / "out.mkv")
+    assert later[later.index("-ss") + 1] == "90" and later.index("-ss") < later.index("-i")
 
 
 def _record(path: Path, seconds: float, audio: bool = True) -> None:
