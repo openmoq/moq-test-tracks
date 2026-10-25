@@ -217,6 +217,10 @@ class Registry:
             raise Rejected(429, [f"the runner is at its limit of {cfg.policy.max_jobs} jobs"])
         if sum(1 for e in active if e.job.tool.id == tool.id) >= tool.max_jobs:
             raise Rejected(429, [f"{tool.id} is at its limit of {tool.max_jobs} jobs"])
+        if body.owner is not None and not body.admin:
+            limit = cfg.policy.key_max_jobs
+            if sum(1 for e in active if e.owner == body.owner) >= limit:
+                raise Rejected(429, [f"this key is at its limit of {limit} jobs"])
         job = self._job(body, tool, relay, namespace, spec, draft, ttl, self.work)
         check = await self._adapter_check(job)
         live = sum(1 for e in active if e.check.source == "mpegts")

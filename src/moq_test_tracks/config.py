@@ -55,6 +55,7 @@ class Policy:
     max_jobs: int = 6
     max_live_encodes: int = 2
     global_max_ttl_s: int = 86400
+    key_max_jobs: int = 2
 
 
 @dataclass(frozen=True)
@@ -126,6 +127,7 @@ def load(root: Path | None = None) -> Config:
         max_jobs=int(caps.get("max_jobs", 6)),
         max_live_encodes=int(caps.get("max_live_encodes", 2)),
         global_max_ttl_s=int(caps.get("max_ttl_s", 86400)),
+        key_max_jobs=int(per_key.get("max_jobs", 2)),
     )
     return Config(root, relays, relays_doc.get("default", next(iter(relays))), tools, policy)
 
