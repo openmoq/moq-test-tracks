@@ -12,7 +12,7 @@ import pytest
 from moq_test_tracks.content.recipes import RecipeError, loop_seconds, source_command
 from moq_test_tracks.spec import decode, from_slash
 
-BASE = "p/moq_test_tracks_00/msf/loc/h264/720/30/2500/2000/0/aac/2/128/1/0/ts/0"
+BASE = "p/moq_test_tracks_00/msf/loc/catalog/h264/720/30/2500/2000/0/aac/2/128/1/0/ts/0"
 
 
 def _spec(**changes):
@@ -28,6 +28,7 @@ def test_live_h264_aac():
     assert argv[0] == "ffmpeg" and argv[-1] == "out/s.ts"
     assert argv.count("-re") == 2
     assert _value(argv, "-c:v") == "libx264" and _value(argv, "-bf") == "0"
+    assert _value(argv, "-profile:v") == "high"
     assert _value(argv, "-g") == "60" and _value(argv, "-keyint_min") == "60"
     assert _value(argv, "-sc_threshold") == "0"
     assert _value(argv, "-r") == "30/1"
@@ -46,6 +47,8 @@ def test_fractional_rate_and_group():
 
 
 def test_codecs():
+    h264cb = source_command(_spec(video_codec="h264cb"), "mpegts", "o.ts")
+    assert _value(h264cb, "-c:v") == "libx264" and _value(h264cb, "-profile:v") == "baseline"
     h265 = source_command(_spec(video_codec="h265"), "mp4", "o.mp4")
     assert _value(h265, "-c:v") == "libx265" and _value(h265, "-tag:v") == "hvc1"
     av1 = source_command(_spec(video_codec="av1"), "mp4", "o.mp4")

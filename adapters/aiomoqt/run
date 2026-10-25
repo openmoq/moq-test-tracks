@@ -41,6 +41,8 @@ def plan(req, python=sys.executable):
         refuse("video_forwarding", "one subgroup per object is not exposed yet")
     if f["content"] == "clip":
         refuse("content", "clip sources are not available yet")
+    if f["init_data"] in ("track", "object"):
+        refuse("init_data", "init data carriage is not selectable yet (catalog only)")
     if has_audio:
         if f["audio_codec"] == "opus":
             refuse("audio_codec", "opus is not supported in the TS and mp4 paths yet")
@@ -63,7 +65,7 @@ def plan(req, python=sys.executable):
     if reasons:
         return {"accept": False, "reasons": reasons}
 
-    live = packaging == "loc" and f["video_codec"] == "h264"
+    live = packaging == "loc" and f["video_codec"] in ("h264", "h264cb")
     source = "mpegts" if live else "mp4"
     path = (req.get("source") or {}).get("path", "<source>")
     duration = f["duration_s"] or req["ttl_s"]
@@ -82,7 +84,12 @@ def plan(req, python=sys.executable):
         argv.append("--no-audio")
     elif f["audio_forwarding"] == 3:
         argv.append("-D")
-    return {"accept": True, "source": source, "argv": argv, "notes": []}
+    notes = []
+    if f["init_data"] == "catalog":
+        notes.append(
+            "pub_media also sends VIDEO_CONFIG / AUDIO_CONFIG on each group's first object"
+        )
+    return {"accept": True, "source": source, "argv": argv, "notes": notes}
 
 
 def translate(line, endpoints):

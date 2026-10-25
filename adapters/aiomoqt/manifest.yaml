@@ -10,9 +10,10 @@ stop:
   signal: SIGINT  # pub_media has no SIGTERM handler
   grace_s: 3
 capabilities:
-  catalog: [msf, cmsf]
+  catalog: [msf]
+  init_data: [catalog]
   packaging: [loc, cmaf, locmaf]
-  video_codec: [h264, av1, none]
+  video_codec: [h264, h264cb, av1, none]
   audio_codec: [aac, none]
   video_forwarding: [0]
   audio_forwarding: [0, 3]

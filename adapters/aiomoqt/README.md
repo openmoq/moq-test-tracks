@@ -34,6 +34,7 @@ Refused in check mode, or not yet conformant, until aiomoqt supports them:
 | no `prft` for `cmaf` / `locmaf` | `prft` with the capture time in the first Object of each Group |
 | FORWARD defaults to 0 | default to 1 |
 | catalog `none` | `--no-catalog` |
+| init data `track` / `object`; with `catalog`, VIDEO_CONFIG / AUDIO_CONFIG also ride each group's first object | select init carriage: catalog only, Track Property only, or group-start Object Property only |
 | `opus` on the TS / mp4 paths | Opus in the `--ts` and `--mp4` sources |
 | `h265`; `av1` via `--ts` | codec coverage per source path |
 | video forwarding 1 | expose the PER_OBJECT subgroup mapping |

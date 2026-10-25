@@ -15,6 +15,7 @@ def fields_dict(spec: TrackSpec) -> dict:
     return {
         "catalog": spec.catalog,
         "packaging": spec.packaging,
+        "init_data": spec.init_data,
         "video_codec": spec.video_codec,
         "video_height": spec.video_height,
         "video_width": spec.video_width,
