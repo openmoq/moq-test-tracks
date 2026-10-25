@@ -283,7 +283,7 @@ To refuse:
   status report. Every other line on stdout or stderr is log output, which
   the service keeps in a ring buffer and in `$MTT_JOB_DIR/log`.
   ```
-  @mtt {"event":"ready","endpoints":[{"url":"moqt://…","draft":18,"state":"connected"}]}
+  @mtt {"event":"ready","endpoints":[{"url":"moqt://…","draft":18,"state":"up"}]}
   @mtt {"event":"stats","t":12.0,"tracks":{"video":{"objects":360,"groups":6,"kbps":2480,"dropped":0},"audio":{"objects":562,"groups":562,"kbps":128,"dropped":0}},"subscribers":1}
   @mtt {"event":"endpoint_lost","url":"moqt://…","reason":"…"}
   @mtt {"event":"done","reason":"duration"}
