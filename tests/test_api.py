@@ -213,7 +213,7 @@ def test_roles(client, keys, stub):
     job = r.json()
     run_id = auth.parse(keys["run"])[0]
     assert stub.posted[-1]["owner"] == run_id and job["owner_name"] == "run-user"
-    assert stub.posted[-1]["relay"] == "moqx_main" and stub.posted[-1]["mode"] == "publish"
+    assert stub.posted[-1]["relay"] == "moqx-main" and stub.posted[-1]["mode"] == "publish"
     assert stub.posted[-1]["admin"] is False
     forged = {"preset": "360p", "admin": True}
     client.post("/api/v1/jobs", json=forged, headers=bearer(keys["run"]))
@@ -236,7 +236,7 @@ def test_roles(client, keys, stub):
 
 def test_query_parameters_and_check(client, keys, stub):
     r = client.post(
-        "/api/v1/jobs/check?h=1080&fps=60&ac=opus&afwd=3&relay=moqx_main",
+        "/api/v1/jobs/check?h=1080&fps=60&ac=opus&afwd=3&relay=moqx-main",
         headers=bearer(keys["run"]),
     )
     assert r.status_code == 200
