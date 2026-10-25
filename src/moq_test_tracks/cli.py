@@ -260,6 +260,74 @@ def cmd_runner(args: argparse.Namespace) -> int:
     return 0
 
 
+def _db_path(args: argparse.Namespace) -> Path:
+    if getattr(args, "db", None):
+        return Path(args.db)
+    if env := os.environ.get("MTT_DB"):
+        return Path(env)
+    return Path("var") / "api.sqlite"
+
+
+def cmd_api(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from .api.app import Settings, create_app
+
+    env = os.environ
+    missing = [
+        v
+        for v in ("MTT_RUNNER_TOKEN", "MTT_SESSION_SECRET", "MTT_PUBLIC_ORIGINS")
+        if not env.get(v)
+    ]
+    if missing:
+        return _fail([f"{', '.join(missing)} not set"])
+    try:
+        cfg = load_config(Path(args.root) if args.root else None)
+    except FileNotFoundError as e:
+        return _fail([str(e)])
+    settings = Settings(
+        runner_url=env.get("MTT_RUNNER_URL", "http://127.0.0.1:8090"),
+        runner_token=env["MTT_RUNNER_TOKEN"],
+        session_secret=env["MTT_SESSION_SECRET"],
+        db_path=_db_path(args),
+        public_origins=tuple(o.strip() for o in env["MTT_PUBLIC_ORIGINS"].split(",") if o.strip()),
+        trust_proxy=env.get("MTT_TRUST_PROXY", "1") == "1",
+        secure_cookies=env.get("MTT_INSECURE_COOKIES", "0") != "1",
+    )
+    uvicorn.run(
+        create_app(cfg, settings),
+        host=args.host,
+        port=args.port,
+        log_level="info",
+        proxy_headers=settings.trust_proxy,
+        forwarded_allow_ips="*" if settings.trust_proxy else None,
+    )
+    return 0
+
+
+def cmd_keys(args: argparse.Namespace) -> int:
+    from .api import auth
+    from .api.db import Db
+
+    db = Db(_db_path(args))
+    if args.keys_command == "create":
+        try:
+            key = auth.new_key(db, args.name, args.role, args.expires_days)
+        except ValueError as e:
+            return _fail([str(e)])
+        print(key)
+        print("Store this key now; it cannot be shown again.", file=sys.stderr)
+    elif args.keys_command == "list":
+        for k in auth.list_keys(db):
+            status = "revoked" if k["revoked"] else "active"
+            print(f"{k['id']}  {k['role']:5}  {status:7}  {k['name']}")
+    elif args.keys_command == "revoke":
+        if not auth.revoke(db, args.key_id):
+            return _fail([f"no active key {args.key_id}"])
+        print(f"revoked {args.key_id}")
+    return 0
+
+
 def _add_media_options(p: argparse.ArgumentParser) -> None:
     for opt, name in MEDIA_OPTIONS.items():
         p.add_argument(f"--{opt}", dest=opt, metavar="VALUE", help=name)
@@ -291,6 +359,25 @@ def build_parser() -> argparse.ArgumentParser:
     agent.add_argument("--root", help="repository root holding config/ and adapters/")
     agent.add_argument("--var", help="state directory for jobs and the source cache")
     agent.set_defaults(func=cmd_runner)
+
+    api = sub.add_parser("api", help="serve the public API and dashboard")
+    api.add_argument("--host", default="127.0.0.1")
+    api.add_argument("--port", type=int, default=8080)
+    api.add_argument("--root", help="repository root holding config/ and adapters/")
+    api.add_argument("--db", help="SQLite path (default: MTT_DB or var/api.sqlite)")
+    api.set_defaults(func=cmd_api)
+
+    keys = sub.add_parser("keys", help="manage API keys")
+    keys.add_argument("--db", help="SQLite path (default: MTT_DB or var/api.sqlite)")
+    keys_sub = keys.add_subparsers(dest="keys_command", required=True)
+    create = keys_sub.add_parser("create", help="create a key and print it once")
+    create.add_argument("--name", required=True)
+    create.add_argument("--role", choices=("view", "run", "admin"), default="run")
+    create.add_argument("--expires-days", type=float)
+    keys_sub.add_parser("list", help="list keys")
+    rev = keys_sub.add_parser("revoke", help="revoke a key by id")
+    rev.add_argument("key_id")
+    keys.set_defaults(func=cmd_keys)
 
     ns = sub.add_parser("ns", help="test namespace codec")
     ns_sub = ns.add_subparsers(dest="ns_command", required=True)
