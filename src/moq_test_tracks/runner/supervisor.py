@@ -15,6 +15,7 @@ import json
 import os
 import signal
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -99,6 +100,8 @@ class Job:
         self.cache_dir = cache_dir
         self.state = "requested"
         self.expired = False
+        self._deadline: float | None = None  # monotonic end of the TTL, set by the first run
+        self._stop_requested = asyncio.Event()
         self._adapter: asyncio.subprocess.Process | None = None
         self._source: asyncio.subprocess.Process | None = None
         self._stopping = False
@@ -231,8 +234,39 @@ class Job:
             _killpg(self._source.pid, signal.SIGKILL)
             await self._source.wait()
 
+    def remaining(self) -> float:
+        """Seconds left of the TTL."""
+        if self._deadline is None:
+            return float(self.request["ttl_s"])
+        return max(0.0, self._deadline - time.monotonic())
+
+    def should_restart(self, rc: int) -> bool:
+        """A run that lost every relay restarts while the job still has TTL left."""
+        return (
+            rc == EXIT_UNAVAILABLE
+            and not self._stopping
+            and not self._stop_requested.is_set()
+            and not self.expired
+            and self.remaining() > 0
+        )
+
+    async def wait_restart(self, delay: float) -> bool:
+        """Back off before a restart. False if a stop or the TTL ended the job meanwhile."""
+        self.state = "reconnecting"
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(self._stop_requested.wait(), min(delay, self.remaining()))
+        if self._stop_requested.is_set():
+            self.state = "ended"
+            return False
+        if self.remaining() <= 0:
+            self.expired = True
+            self.state = "expired"
+            return False
+        return True
+
     def stop(self) -> None:
         """Stop signal to the adapter's process group, SIGKILL after the grace period."""
+        self._stop_requested.set()
         proc = self._adapter
         if proc is None or proc.returncode is not None or self._stopping:
             return
@@ -244,6 +278,7 @@ class Job:
     def kill(self) -> None:
         """SIGKILL the adapter's process group now."""
         self._stopping = True
+        self._stop_requested.set()
         self._kill()
 
     def _kill(self) -> None:
@@ -274,7 +309,9 @@ class Job:
             preexec_fn=self._preexec,
         )
         self._record(self._adapter)
-        ttl = asyncio.get_running_loop().call_later(self.request["ttl_s"], self._expire)
+        if self._deadline is None:
+            self._deadline = time.monotonic() + self.request["ttl_s"]
+        ttl = asyncio.get_running_loop().call_later(self.remaining(), self._expire)
         log = (self.dir / "log").open("a")
 
         def logline(line: str) -> None:

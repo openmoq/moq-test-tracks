@@ -47,6 +47,13 @@ FAKE_ADAPTER = textwrap.dedent(
         with open(src["path"], "rb") as fh:
             got = len(fh.read(188 * 100))
         print("read", got, file=sys.stderr)
+    fail_next = os.path.join(os.path.dirname(os.environ["MTT_JOB_DIR"]), "fail-next")
+    if os.path.exists(fail_next):
+        left = int(open(fail_next).read() or 0)
+        if left > 0:
+            open(fail_next, "w").write(str(left - 1))
+            print("@mtt " + json.dumps({{"event": "ready"}}), flush=True)
+            sys.exit(69)
     stop = []
     signal.signal(signal.SIGINT, signal.SIG_IGN if content == "noise" else (lambda *_: stop.append(1)))
     print("@mtt " + json.dumps({{"event": "ready"}}), flush=True)
@@ -99,6 +106,14 @@ def _collect(job, stop_after=None):
         return rc
 
     return asyncio.run(go()), events, logs
+
+
+def test_should_restart(fake_tool, tmp_path):
+    job = _job(fake_tool, tmp_path)
+    assert job.should_restart(69)
+    assert not job.should_restart(70) and not job.should_restart(0) and not job.should_restart(1)
+    job.stop()
+    assert not job.should_restart(69)
 
 
 def test_check_refuses(fake_tool, tmp_path):

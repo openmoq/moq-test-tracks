@@ -110,12 +110,17 @@ the fields from `moq_test_tracks_00` on are the same.
 A job response carries `id`, `state`, `namespace`, `namespace_safe`, `tracks`,
 `tool`, `relay`, `url`, `transport`, `draft`, `mode`, `ttl_s`, `created`,
 `expires`, `owner`, `owner_name`, `plan` (the tool's command line), `source`,
-`exit_code`, `error` and `last_stats`. `POST /api/v1/jobs` adds `joined`: true
+`exit_code`, `error`, `last_stats` and `restarts`. `POST /api/v1/jobs` adds `joined`: true
 when the same relay and namespace were already running, and you share that
 job.
 
 States: `checked`, `starting`, `running`, `stopping`, then `ended`, `expired`
-(TTL reached), `killed` or `failed`. A job is publishing from `running`. The
+(TTL reached), `killed` or `failed`. A job is publishing from `running`.
+
+If the tool loses every relay (for example when a relay restarts), the job
+goes to `reconnecting` and the service starts the tool again on the same
+namespace, after 1, 2, 4… s (at most 30 s), until the TTL ends. `restarts`
+counts these. After 20 failed attempts in a row the job ends `failed`. The
 first job of a clip shape renders a loop first, which can take up to a minute
 at 2160p.
 
@@ -124,10 +129,11 @@ at 2160p.
 | Event | Data |
 |-------|------|
 | `state` | `{"state": …, "exit_code": …}` |
-| `event` | the tool's status: `ready`, `stats` (per-track objects, groups, kbps), `endpoint_lost`, `done` |
+| `event` | the tool's status: `ready`, `stats` (per-track objects, groups, kbps), `endpoint_lost`, `done`; and the service's `restart` (`attempt`, `delay_s`, `exit_code`) |
 | `log` | one line of the tool's log |
 
-A restart of the service ends running jobs, and their records are lost.
+A restart of the service itself still ends running jobs, and their records
+are lost.
 
 ## Errors
 

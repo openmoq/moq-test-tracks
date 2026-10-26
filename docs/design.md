@@ -245,6 +245,10 @@ Synthetic content stays the default. For `clip`:
 
 `requested → checked → queued → starting → running → stopping → ended | failed | expired`
 
+A run that loses every relay (tool exit 69) goes `running → reconnecting →
+starting → running` again on the same namespace, with exponential backoff
+capped at 30 s, until the TTL ends or 20 attempts in a row fail.
+
 - Every job has a TTL, even when draft Field 16 is 0. The default and
   maximum come from policy.
 - The runner owns TTLs, and api reconciles with the runner on restart.
