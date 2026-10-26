@@ -225,6 +225,11 @@ Synthetic content stays the default. For `clip`:
   reach local files or plain-http addresses. Only operators fetch; API
   callers name a configured clip id and never a URL. `mtt media list` shows
   what is fetched.
+- **Local sources:** a clip can name files instead of a URL: `video`, plus
+  `audio` when the video file has none, relative to `<var>/media` on the
+  runner volume. `mtt media import <id>` copies them, as is, into the same
+  kind of mezzanine. `loop_s` sets a clip's loop length (default about 60 s),
+  for example the full 150 s Artemis II window.
 - **Live sources:** a fixed recording, rather than the live stream, keeps a
   test's picture and sound the same on every run.
 - **Encoding:** jobs encode the newest recording to the namespace's shape:

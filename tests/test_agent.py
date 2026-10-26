@@ -235,7 +235,7 @@ def test_clip_jobs(client, root):
     job = client.post("/jobs", json=clip_job, headers=AUTH).json()
     req = json.loads((root / "var" / "jobs" / job["id"] / "request.json").read_text())
     path = str(clips / "demo-abc.mkv")
-    assert req["clip"] == {"id": "demo", "path": path, "attribution": "Demo credit"}
+    assert req["clip"] == {"id": "demo", "path": path, "attribution": "Demo credit", "loop_s": None}
     listed = client.get("/clips", headers=AUTH).json()
     assert listed[0]["id"] == "demo" and listed[0]["fetched"]["sha256"] == "abc"
     client.post("/stop-all", headers=AUTH)

@@ -115,11 +115,12 @@ def _audio_encoder(spec: TrackSpec) -> list[str]:
     raise RecipeError(f"no encoder for audio codec {spec.audio_codec}")
 
 
-def loop_seconds(spec: TrackSpec) -> Fraction:
-    """Loop length near LOOP_TARGET_S that is a whole number of video groups."""
+def loop_seconds(spec: TrackSpec, target: int | None = None) -> Fraction:
+    """Loop length near target (default LOOP_TARGET_S) that is a whole number of video groups."""
+    target = target or LOOP_TARGET_S
     if spec.group_ms is None:
-        return Fraction(LOOP_TARGET_S)
-    groups = math.ceil(LOOP_TARGET_S * 1000 / spec.group_ms)
+        return Fraction(target)
+    groups = math.ceil(target * 1000 / spec.group_ms)
     return Fraction(groups * spec.group_ms, 1000)
 
 
@@ -157,6 +158,6 @@ def source_command(
     if live:
         argv += ["-f", "mpegts", "-muxdelay", "0", "-muxpreload", "0", str(output)]
     else:
-        seconds = loop_seconds(spec)
+        seconds = loop_seconds(spec, (clip or {}).get("loop_s"))
         argv += ["-t", f"{float(seconds):.3f}", "-movflags", "+faststart", "-f", "mp4", str(output)]
     return argv

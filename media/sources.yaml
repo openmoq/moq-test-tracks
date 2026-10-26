@@ -40,3 +40,89 @@ clips:
     capture_s: 120
     license: Akamai-hosted live stream, used with Akamai's permission (Will Law)
     attribution: Akamai live channel
+
+  # Artemis II launch (2026-04-01), nine views synced to one 150 s window with
+  # T0 at 10 s and keyframes every 2 s in every feed. NASA footage and audio,
+  # from openmoq/FFmpeg's multi-view demo set. Import the set into
+  # <var>/media/artemis (out/synced, out/audio), then `mtt media import <id>`.
+
+  artemis_tv:
+    title: "Artemis II launch: NASA TV launch coverage"
+    video: artemis/synced/tv.mp4
+    audio: artemis/audio/tv.m4a
+    capture_s: 150
+    loop_s: 150
+    license: NASA footage and audio under NASA media guidelines; no NASA endorsement; no NASA logos
+    attribution: NASA
+
+  artemis_directors:
+    title: "Artemis II launch: Director's cut"
+    video: artemis/synced/directors-cut.mp4
+    audio: artemis/audio/tv.m4a
+    capture_s: 150
+    loop_s: 150
+    license: NASA footage and audio under NASA media guidelines; no NASA endorsement; no NASA logos
+    attribution: NASA
+
+  artemis_tracker:
+    title: "Artemis II launch: Long-lens tracker"
+    video: artemis/synced/tracker-iso.mp4
+    audio: artemis/audio/tv.m4a
+    capture_s: 150
+    loop_s: 150
+    license: NASA footage and audio under NASA media guidelines; no NASA endorsement; no NASA logos
+    attribution: NASA
+
+  artemis_ucs15:
+    title: "Artemis II launch: UCS-15 visible tracker"
+    video: artemis/synced/tracking-ucs15.mp4
+    audio: artemis/audio/tv.m4a
+    capture_s: 150
+    loop_s: 150
+    license: NASA footage and audio under NASA media guidelines; no NASA endorsement; no NASA logos
+    attribution: NASA
+
+  artemis_ir:
+    title: "Artemis II launch: UCS-15 infrared"
+    video: artemis/synced/ir.mp4
+    audio: artemis/audio/tv.m4a
+    capture_s: 150
+    loop_s: 150
+    license: NASA footage and audio under NASA media guidelines; no NASA endorsement; no NASA logos
+    attribution: NASA
+
+  artemis_vab:
+    title: "Artemis II launch: VAB roof (H.265 source)"
+    video: artemis/synced/vab-roof-hevc.mp4
+    audio: artemis/audio/tv.m4a
+    capture_s: 150
+    loop_s: 150
+    license: NASA footage and audio under NASA media guidelines; no NASA endorsement; no NASA logos
+    attribution: NASA
+
+  artemis_pad_high:
+    title: "Artemis II launch: Pad, high angle"
+    video: artemis/synced/pad-high.mp4
+    audio: artemis/audio/tv.m4a
+    capture_s: 150
+    loop_s: 150
+    license: NASA footage and audio under NASA media guidelines; no NASA endorsement; no NASA logos
+    attribution: NASA
+
+  artemis_riverside:
+    title: "Artemis II launch: Pad, riverside (AV1 source)"
+    video: artemis/synced/pad-riverside-av1.mp4
+    audio: artemis/audio/tv.m4a
+    capture_s: 150
+    loop_s: 150
+    license: NASA footage and audio under NASA media guidelines; no NASA endorsement; no NASA logos
+    attribution: NASA
+
+  artemis_onboard:
+    title: "Artemis II launch: Onboard SLS cameras"
+    video: artemis/synced/onboard-sls.mp4
+    audio: artemis/audio/tv.m4a
+    capture_s: 150
+    loop_s: 150
+    license: NASA footage and audio under NASA media guidelines; no NASA endorsement; no NASA logos
+    attribution: NASA

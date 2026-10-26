@@ -66,11 +66,16 @@ class Policy:
 class Clip:
     id: str
     title: str
-    url: str  # fetched by `mtt media fetch`, never by API callers
+    url: str | None  # fetched by `mtt media fetch`, never by API callers
     capture_s: int  # seconds recorded from the source into the mezzanine
     license: str
     attribution: str  # shown in the picture
     start_s: int = 0  # where the recording starts in a file source
+    # Local sources for `mtt media import`, relative to <var>/media; audio is a
+    # separate file when the video file has none.
+    video: str | None = None
+    audio: str | None = None
+    loop_s: int | None = None  # loop length; default about LOOP_TARGET_S
 
 
 @dataclass(frozen=True)
@@ -110,17 +115,27 @@ def _clips(path: Path) -> dict[str, Clip]:
         clip = Clip(
             id=cid,
             title=c.get("title", cid),
-            url=c["url"],
+            url=c.get("url"),
             capture_s=int(c.get("capture_s", 120)),
             license=c["license"],
             attribution=c["attribution"],
             start_s=int(c.get("start_s", 0)),
+            video=c.get("video"),
+            audio=c.get("audio"),
+            loop_s=int(c["loop_s"]) if "loop_s" in c else None,
         )
         problems = []
         if not CLIP_ID.fullmatch(cid):
             problems.append("id must match [a-z0-9_]+")
-        if not clip.url.startswith("https://"):
+        if (clip.url is None) == (clip.video is None):
+            problems.append("give either url or video")
+        if clip.url is not None and not clip.url.startswith("https://"):
             problems.append("url must be https")
+        for rel in (clip.video, clip.audio):
+            if rel is not None and (rel.startswith("/") or ".." in Path(rel).parts):
+                problems.append(f"{rel}: media paths are relative to <var>/media")
+        if clip.loop_s is not None and not 10 <= clip.loop_s <= 600:
+            problems.append("loop_s must be 10-600")
         if not 10 <= clip.capture_s <= 600:
             problems.append("capture_s must be 10-600")
         if not 0 <= clip.start_s <= 86400:

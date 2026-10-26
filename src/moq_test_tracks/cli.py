@@ -232,7 +232,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         mezz = media.mezzanine(cache, cid) if cid in cfg.clips else None
         if mezz is None:
             return _fail([f"clip {cid} is not configured and fetched (mtt media fetch)"])
-        clip = {"id": cid, "path": str(mezz.path), "attribution": cfg.clips[cid].attribution}
+        c = cfg.clips[cid]
+        clip = {"id": cid, "path": str(mezz.path), "attribution": c.attribution, "loop_s": c.loop_s}
     draft = args.draft or relay.default_draft
     ttl = args.ttl or cfg.policy.default_ttl_s
     errors = job_errors(
@@ -296,16 +297,21 @@ def cmd_media(args: argparse.Namespace) -> int:
                 f"fetched {mezz.captured_at}  {mezz.duration_s:.0f} s  "
                 f"{mezz.video.get('width')}x{mezz.video.get('height')} {mezz.video.get('codec')}"
                 if mezz
-                else "not fetched"
+                else ("not imported" if c.video else "not fetched")
             )
-            print(f"{c.id:16} {state}  {c.title}")
+            print(f"{c.id:18} {state}  {c.title}")
         return 0
     clip = cfg.clips.get(args.clip)
     if clip is None:
         return _fail([f"unknown clip {args.clip}; see media/sources.yaml"])
-    print(f"recording {clip.capture_s} s of {clip.id} from {clip.url}", file=sys.stderr)
     try:
-        mezz = media.fetch(clip, cache)
+        if args.media_command == "import":
+            media_dir = _var(args, cfg) / "media"
+            print(f"importing {clip.id} from {media_dir}", file=sys.stderr)
+            mezz = media.import_files(clip, cache, media_dir)
+        else:
+            print(f"recording {clip.capture_s} s of {clip.id} from {clip.url}", file=sys.stderr)
+            mezz = media.fetch(clip, cache)
     except (media.MediaError, subprocess.TimeoutExpired) as e:
         return _fail([str(e)])
     print(json.dumps({"clip": clip.id, "path": str(mezz.path), **mezz.summary()}, indent=2))
@@ -429,6 +435,8 @@ def build_parser() -> argparse.ArgumentParser:
     med_sub = med.add_subparsers(dest="media_command", required=True)
     fetch = med_sub.add_parser("fetch", help="record a clip from its URL into the cache")
     fetch.add_argument("clip", help="clip id")
+    imp = med_sub.add_parser("import", help="take a clip's local files from <var>/media")
+    imp.add_argument("clip", help="clip id")
     med_sub.add_parser("list", help="configured clips and what has been fetched")
     med.set_defaults(func=cmd_media)
 

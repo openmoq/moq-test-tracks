@@ -24,8 +24,11 @@ needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs 
 
 def test_repo_clips_load():
     clips = config.load(ROOT).clips
-    assert {"akamai_test", "nasa_tv"} <= set(clips)
-    assert all(c.url.startswith("https://") for c in clips.values())
+    assert {"akamai_test", "nasa_tv", "artemis_tv"} <= set(clips)
+    assert all(c.url.startswith("https://") for c in clips.values() if c.url)
+    tv = clips["artemis_tv"]
+    assert tv.video == "artemis/synced/tv.mp4" and tv.audio == "artemis/audio/tv.m4a"
+    assert tv.loop_s == 150 and tv.url is None
 
 
 @pytest.mark.parametrize(
@@ -35,11 +38,15 @@ def test_repo_clips_load():
         ({"attribution": "Credit: me"}, "attribution allows"),
         ({"capture_s": 5}, "capture_s"),
         ({"start_s": -1}, "start_s"),
+        ({"video": "a.mp4"}, "either url or video"),
+        ({"url": None, "video": "../etc/x.mp4"}, "relative to"),
+        ({"url": None, "video": "/abs/x.mp4"}, "relative to"),
+        ({"url": None, "video": "a.mp4", "loop_s": 5}, "loop_s"),
     ],
 )
 def test_clip_validation(tmp_path, entry, problem):
     clip = {"url": "https://x/a.m3u8", "license": "l", "attribution": "ok", **entry}
-    lines = [f"    {k}: {json.dumps(v)}" for k, v in clip.items()]
+    lines = [f"    {k}: {json.dumps(v)}" for k, v in clip.items() if v is not None]
     (tmp_path / "sources.yaml").write_text("clips:\n  c1:\n" + "\n".join(lines) + "\n")
     with pytest.raises(ValueError, match=problem):
         config._clips(tmp_path / "sources.yaml")
@@ -110,6 +117,34 @@ def test_store_rejects(tmp_path, seconds, audio, problem):
     with pytest.raises(media.MediaError, match=problem):
         media.store(CLIP, cache, rec)
     assert media.mezzanine(cache, "demo") is None
+
+
+@needs_ffmpeg
+def test_import_video_with_separate_audio(tmp_path):
+    media_dir, cache = tmp_path / "media", tmp_path / "cache"
+    (media_dir / "set").mkdir(parents=True)
+    video, audio = media_dir / "set" / "view.mp4", media_dir / "set" / "audio.m4a"
+    ff = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i"]
+    subprocess.run(
+        [*ff, "testsrc2=size=320x180:rate=30", "-t", "12", "-c:v", "libx264", "-preset",
+         "ultrafast", str(video)],
+        check=True,
+    )  # fmt: skip
+    subprocess.run(
+        [*ff, "sine=frequency=440:sample_rate=48000", "-t", "12", "-c:a", "aac", str(audio)],
+        check=True,
+    )  # fmt: skip
+    clip = dataclasses.replace(
+        CLIP, url=None, video="set/view.mp4", audio="set/audio.m4a", loop_s=12
+    )
+    mezz = media.import_files(clip, cache, media_dir)
+    assert mezz.video["width"] == 320 and mezz.audio["sample_rate"] == 48000
+    assert mezz.duration_s >= 11.9 and media.mezzanine(cache, "demo") == mezz
+    outside = dataclasses.replace(clip, video="../escape.mp4")
+    with pytest.raises(media.MediaError, match="not a file under"):
+        media.import_files(outside, cache, media_dir)
+    with pytest.raises(media.MediaError, match="use mtt media import"):
+        media.fetch(clip, cache)
 
 
 def test_cli_media_list(tmp_path, capsys):
