@@ -286,9 +286,11 @@ To refuse:
   @mtt {"event":"ready","endpoints":[{"url":"moqt://…","draft":18,"state":"up"}]}
   @mtt {"event":"stats","t":12.0,"tracks":{"video":{"objects":360,"groups":6,"kbps":2480,"dropped":0},"audio":{"objects":562,"groups":562,"kbps":128,"dropped":0}},"subscribers":1}
   @mtt {"event":"endpoint_lost","url":"moqt://…","reason":"…"}
+  @mtt {"event":"endpoint_up","url":"moqt://…","draft":18}
   @mtt {"event":"done","reason":"duration"}
   ```
-  - The job is `running` from the `ready` event.
+  - The job is `running` from the `ready` event, and `reconnecting` from the
+    `endpoint_lost` of its last endpoint up until the next `endpoint_up`.
   - Send `stats` every 1–5 s.
   - An adapter whose tool can't produce these lines translates the tool's
     own output.

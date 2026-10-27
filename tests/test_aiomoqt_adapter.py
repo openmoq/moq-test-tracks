@@ -58,9 +58,34 @@ def test_loc_h264_is_live_ts():
     assert argv[argv.index("--forward") + 1] == "1"
     assert "--pub-both" in argv and argv[argv.index("--ts") + 1] == "<source>"
     assert "-D" not in argv and "--no-audio" not in argv
-    assert "--timestamp-mapping" in argv and "--stats-json" in argv
+    assert "--timestamp-mapping" in argv and "--stats-json" in argv and "--reconnect" in argv
+    assert argv[argv.index("--ts-cadence") + 1] == "fps=30,gop=60"
+    assert argv[argv.index("--catalog-bitrate") + 1] == "600000"
+    assert argv[argv.index("--init-data") + 1] == "catalog" and "--no-catalog" not in argv
     assert argv[argv.index("--audio-frames-per-group") + 1] == "1"
     assert "--video-subgroups" not in argv and "--audio-subgroups" not in argv
+    assert p["notes"] == []
+
+
+def test_fractional_rate_cadence():
+    argv = adapter.plan(_request(frame_rate="29_97", group_ms=2002))["argv"]
+    assert argv[argv.index("--ts-cadence") + 1] == "fps=30000/1001,gop=60"
+
+
+def test_no_catalog():
+    p = adapter.plan(_request(catalog="none", init_data=None))
+    assert p["accept"] and "--no-catalog" in p["argv"] and "--init-data" not in p["argv"]
+    assert "not in the media itself" in p["notes"][0]
+
+
+def test_cmaf_leaves_init_data_to_the_catalog():
+    p = adapter.plan(_request(packaging="cmaf"))
+    assert p["accept"] and "--init-data" not in p["argv"] and "--ts-cadence" not in p["argv"]
+
+
+def test_datagram_audio_over_webtransport():
+    p = adapter.plan(_request(transport="webtransport", audio_forwarding=3))
+    assert p["accept"] and "-D" in p["argv"] and p["argv"][4] == "https://relay:4433/moq"
 
 
 @pytest.mark.parametrize(
@@ -77,6 +102,8 @@ def test_loc_h264_is_live_ts():
         ({"audio_forwarding": 1}, "mpegts", ["--audio-subgroups", "object"]),
         (NO_AUDIO, "mpegts", ["--no-audio"]),
         ({"audio_forwarding": 3}, "mpegts", ["-D"]),
+        ({"init_data": "track"}, "mpegts", ["--init-data", "track"]),
+        ({"init_data": "object"}, "mpegts", ["--init-data", "object"]),
         ({"duration_s": 600}, "mpegts", ["-t", "600"]),
     ],
 )
@@ -102,14 +129,10 @@ def test_namespace_mode():
 @pytest.mark.parametrize(
     "kwargs, field",
     [
-        ({"catalog": "none", "init_data": None}, "catalog"),
-        ({"init_data": "track"}, "init_data"),
-        ({"init_data": "object"}, "init_data"),
         ({"content": "clip"}, "content"),
         ({"packaging": "locmaf", "video_forwarding": 1}, "video_forwarding"),
         ({"packaging": "locmaf", "audio_forwarding": 1}, "audio_forwarding"),
         ({"packaging": "cmaf", "audio_forwarding": 3}, "audio_forwarding"),
-        ({"audio_forwarding": 3, "transport": "webtransport"}, "transport"),
     ],
 )
 def test_refuses(kwargs, field):
@@ -152,7 +175,7 @@ def test_run_passes_events_through(fake_pub_media, capfd):
     assert "a log line" in err
 
 
-@pytest.mark.parametrize("code, expected", [(64, 64), (1, 69), (3, 70)])
+@pytest.mark.parametrize("code, expected", [(64, 64), (69, 69), (70, 70), (1, 70), (2, 70)])
 def test_run_exit_codes(fake_pub_media, capfd, code, expected):
     assert fake_pub_media(f"raise SystemExit({code})") == expected
     out, _ = capfd.readouterr()
@@ -160,7 +183,7 @@ def test_run_exit_codes(fake_pub_media, capfd, code, expected):
 
 
 def test_check_mode_process(tmp_path):
-    for changes, code in (({}, 0), ({"catalog": "none"}, 64)):
+    for changes, code in (({}, 0), ({"content": "clip"}, 64)):
         path = tmp_path / "request.json"
         path.write_text(json.dumps(_request(**changes)))
         env = {"MTT_MODE": "check", "MTT_REQUEST_FILE": str(path), "PATH": os.environ["PATH"]}

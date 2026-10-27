@@ -103,6 +103,7 @@ class Job:
         self._deadline: float | None = None  # monotonic end of the TTL, set by the first run
         self._stop_requested = asyncio.Event()
         self._kill_requested = False
+        self._up: set[str] = set()  # endpoint URLs the tool reports up
         self._adapter: asyncio.subprocess.Process | None = None
         self._source: asyncio.subprocess.Process | None = None
         self._stopping = False
@@ -291,6 +292,28 @@ class Job:
         self.expired = True
         self.stop()
 
+    def _track(self, event: dict) -> None:
+        """Job state from the tool's ready and endpoint events."""
+        kind, url = event.get("event"), event.get("url")
+        if kind == "ready":
+            listed = event.get("endpoints")
+            if isinstance(listed, list):
+                self._up = {
+                    e.get("url") for e in listed if isinstance(e, dict) and e.get("state") == "up"
+                }
+            else:
+                self._up = {e["url"] for e in self.request["endpoints"]}
+            if self.state == "starting":
+                self.state = "running"
+        elif kind == "endpoint_lost":
+            self._up.discard(url)
+            if not self._up and self.state == "running":
+                self.state = "reconnecting"
+        elif kind == "endpoint_up":
+            self._up.add(url)
+            if self.state == "reconnecting":
+                self.state = "running"
+
     async def run(
         self,
         check: CheckResult,
@@ -338,8 +361,7 @@ class Job:
                 except json.JSONDecodeError:
                     logline(line)
                     continue
-                if event.get("event") == "ready" and self.state == "starting":
-                    self.state = "running"
+                self._track(event)
                 on_event(event)
 
         async def read_stderr() -> None:

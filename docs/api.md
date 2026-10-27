@@ -118,9 +118,11 @@ States: `checked`, `starting`, `running`, `stopping`, then `ended`, `expired`
 (TTL reached), `killed` or `failed`. A job is publishing from `running`.
 
 If the tool loses every relay (for example when a relay restarts), the job
-goes to `reconnecting` and the service starts the tool again on the same
-namespace, after 1, 2, 4… s (at most 30 s), until the TTL ends. `restarts`
-counts these. After 20 failed attempts in a row the job ends `failed`. The
+is `reconnecting` until one is back. aiomoqt redials the relay itself, 1, 2,
+4… s apart (at most 30 s), and its media timeline runs on meanwhile. A tool
+that exits instead is started again on the same namespace after the same
+backoff, until the TTL ends; `restarts` counts these, and after 20 failed
+attempts in a row the job ends `failed`. The
 first job of a clip shape renders a loop first, which can take up to a minute
 at 2160p.
 
@@ -129,7 +131,7 @@ at 2160p.
 | Event | Data |
 |-------|------|
 | `state` | `{"state": …, "exit_code": …}` |
-| `event` | the tool's status: `ready`, `stats` (per-track objects, groups, kbps), `endpoint_lost`, `done`; and the service's `restart` (`attempt`, `delay_s`, `exit_code`) |
+| `event` | the tool's status: `ready`, `stats` (per-track objects, groups, kbps), `endpoint_lost`, `endpoint_up`, `done`; and the service's `restart` (`attempt`, `delay_s`, `exit_code`) |
 | `log` | one line of the tool's log |
 
 A restart of the service itself still ends running jobs, and their records
