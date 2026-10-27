@@ -17,13 +17,13 @@ import secrets
 import shutil
 import signal
 import time
-from collections import deque
+from collections import Counter, deque
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ..config import Config, job_errors
@@ -320,10 +320,62 @@ class Registry:
             e.sync_state()
         return len(active)
 
+    def metrics(self) -> str:
+        """Prometheus text exposition: job counts against the caps, and per-job restarts and bitrate."""
+        out: list[str] = []
+
+        def metric(name: str, kind: str, doc: str, samples: list[tuple[dict, float]]) -> None:
+            out.extend([f"# HELP {name} {doc}", f"# TYPE {name} {kind}"])
+            for labels, value in samples:
+                tags = ",".join(f'{k}="{_label(v)}"' for k, v in labels.items())
+                out.append(f"{name}{{{tags}}} {value}" if tags else f"{name} {value}")
+
+        active, policy = self.active(), self.cfg.policy
+        states = Counter(e.job.state for e in active)
+        metric("mtt_jobs", "gauge", "Active jobs by state.",
+               [({"state": s}, states.get(s, 0)) for s in ACTIVE])  # fmt: skip
+        metric("mtt_jobs_limit", "gauge", "Global job cap.", [({}, policy.max_jobs)])
+        live = sum(e.check.source == "mpegts" for e in active)
+        metric("mtt_live_encodes", "gauge", "Active jobs encoding live.", [({}, live)])
+        metric(
+            "mtt_live_encodes_limit", "gauge", "Live encode cap.", [({}, policy.max_live_encodes)]
+        )
+        metric("mtt_job_restarts_total", "counter", "Restarts after losing every relay.",
+               [(_job_labels(e), e.restarts) for e in active])  # fmt: skip
+        kbps = []
+        for e in active:
+            for track, stats in ((e.last_stats or {}).get("tracks") or {}).items():
+                if isinstance(stats, dict) and isinstance(stats.get("kbps"), int | float):
+                    kbps.append(({**_job_labels(e), "track": track}, stats["kbps"]))
+        metric(
+            "mtt_job_kbps",
+            "gauge",
+            "Publisher bitrate per track, from the tool's last stats.",
+            kbps,
+        )
+        return "\n".join(out) + "\n"
+
     def _prune(self) -> None:
         finished = [e for e in self.jobs.values() if not e.active]
         for e in sorted(finished, key=lambda e: e.created)[:-FINISHED_KEEP]:
             del self.jobs[e.id]
+
+
+def _label(value: object) -> str:
+    return str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _job_labels(e: Entry) -> dict:
+    spec, clip = e.job.spec, e.job.request.get("clip")
+    video = f"{spec.video_height}p{spec.frame_rate}" if spec.has_video else "none"
+    content = clip["id"] if clip else spec.content
+    return {
+        "job": e.id,
+        "relay": e.relay,
+        "content": content,
+        "packaging": spec.packaging,
+        "video": video,
+    }
 
 
 def sweep_orphans(work: Path) -> int:
@@ -381,6 +433,11 @@ def create_app(cfg: Config, *, token: str, work: Path, cache: Path, nice: int = 
     @app.get("/healthz")
     async def healthz() -> dict:
         return {"ok": True, "active": len(registry.active())}
+
+    # Unauthenticated like /healthz: only containers on the internal network reach the runner.
+    @app.get("/metrics", response_class=PlainTextResponse)
+    async def metrics() -> str:
+        return registry.metrics()
 
     @app.post("/jobs", status_code=201, dependencies=[Depends(auth)])
     async def submit(body: JobIn) -> dict:

@@ -8,12 +8,13 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..config import Config
@@ -200,6 +201,23 @@ def create_app(
         except ValueError as e:
             raise HTTPException(422, {"errors": [str(e)]}) from None
         return body
+
+    @app.get("/auth/grafana", include_in_schema=False)
+    async def grafana_auth(request: Request) -> Response:
+        """Caddy's forward_auth for /grafana: the Grafana user and role, or a refusal."""
+        ip = client_ip(request)
+        if limiter.blocked(ip):
+            return JSONResponse({"detail": {"errors": ["too many failed authentications"]}}, 429)
+        principal, via = authenticate(request)
+        if principal is None:
+            if via is not None:
+                limiter.fail(ip)
+            if "text/html" in request.headers.get("accept", ""):
+                return RedirectResponse("/", status_code=302)
+            return JSONResponse({"detail": {"errors": ["authentication required"]}}, 401)
+        user = "mtt-" + re.sub(r"[^A-Za-z0-9_.-]", "_", principal.name)[:64]
+        role = "Admin" if principal.can("admin") else "Viewer"
+        return Response(headers={"X-WEBAUTH-USER": user, "X-WEBAUTH-ROLE": role})
 
     @app.get("/healthz")
     async def healthz() -> dict:

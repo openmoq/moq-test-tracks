@@ -137,6 +137,24 @@ def test_ttl_ends_reconnecting(client, relay_loss, monkeypatch):
     assert _wait(client, job["id"], ("expired",), timeout=5)["restarts"] == 1
 
 
+def test_metrics(client):
+    r = client.get("/metrics")  # no runner token, like /healthz
+    assert (
+        r.status_code == 200
+        and "mtt_jobs_limit 2" in r.text
+        and "mtt_live_encodes_limit 2" in r.text
+    )
+    job = client.post("/jobs", json=_job(), headers=AUTH).json()
+    _wait(client, job["id"], ("running",))
+    text = client.get("/metrics").text
+    assert 'mtt_jobs{state="running"} 1' in text
+    assert (
+        f'mtt_job_restarts_total{{job="{job["id"]}",relay="local",content="clock",packaging="loc",video="180p30"}} 0'
+        in text
+    )
+    client.post("/stop-all", headers=AUTH)
+
+
 def test_token_required(client):
     assert client.get("/healthz").status_code == 200
     assert client.get("/jobs").status_code == 401

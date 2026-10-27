@@ -301,6 +301,24 @@ def test_clip_namespaces(client, keys):
     assert client.get("/api/v1/clips", headers=bearer(keys["view"])).json()[0]["id"] == "nasa_tv"
 
 
+def test_grafana_forward_auth(client, keys):
+    forged = {"X-WEBAUTH-USER": "admin", "X-WEBAUTH-ROLE": "Admin"}
+    r = client.get("/auth/grafana", headers=forged)
+    assert r.status_code == 401 and "x-webauth-user" not in r.headers
+    browser = client.get("/auth/grafana", headers={"Accept": "text/html"}, follow_redirects=False)
+    assert browser.status_code == 302 and browser.headers["location"] == "/"
+    viewer = client.get("/auth/grafana", headers={**bearer(keys["run"]), **forged})
+    assert viewer.status_code == 200
+    assert viewer.headers["x-webauth-user"] == "mtt-run-user"
+    assert viewer.headers["x-webauth-role"] == "Viewer"
+    admin = client.get("/auth/grafana", headers=bearer(keys["admin"]))
+    assert admin.headers["x-webauth-role"] == "Admin"
+    odd = auth.new_key(client.app.state.db, 'a "b"\nc', "view")
+    assert (
+        client.get("/auth/grafana", headers=bearer(odd)).headers["x-webauth-user"] == "mtt-a__b__c"
+    )
+
+
 def test_login_session_and_origin(client, keys):
     assert client.post("/login", json={"key": keys["run"]}).status_code == 403  # no Origin
     r = client.post("/login", json={"key": keys["run"]}, headers={"Origin": ORIGIN})

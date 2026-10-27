@@ -302,6 +302,22 @@ Everything is in `deploy/compose.yaml`; the host only needs Docker.
   sits in front. Ports published by Docker bypass ufw, so only Caddy
   publishes any.
 - **Certificates:** Caddy's automatic HTTPS (HTTP-01 / TLS-ALPN-01).
+- **Monitoring:** node-exporter (host CPU, memory, disk, network), the
+  runner's `/metrics` (jobs against the caps, per-job bitrate, restarts after
+  relay loss), Prometheus (30 days, at most 4 GB) and Grafana at
+  `/grafana/` with two provisioned dashboards, Platform and Service.
+  - None of them publishes a port. node-exporter runs in the host network
+    and PID namespaces, so it sees the host's interfaces, and listens only
+    on the `obs` bridge address; deploy.sh adds the one ufw rule that lets
+    that subnet reach it.
+  - Grafana has no login of its own. Caddy strips client `X-WEBAUTH-*`
+    headers, asks the api (`/auth/grafana`) whether the session or key is
+    valid, and passes the key's name and role (Admin for admin keys, Viewer
+    otherwise). Grafana takes identity only from Caddy's fixed address.
+    Login form, sign-up, anonymous and basic auth, plugin installs, external
+    snapshots, embedding and phone-home are off; data source and dashboards
+    are provisioned read-only. The admin password in deploy/.env is for
+    break-glass use over SSH.
 - **Relays:** `config/relays.yaml`. `aiomoqt-relay` tracks aiomoqt dev builds
   and speaks drafts 14 to 22.
 - **Default relay:** moqx-main.
