@@ -8,7 +8,8 @@ RUN apt-get update \
 WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-ARG AIOMOQT="aiomoqt==0.13.3"
+# gmarzot-0.14.0 dev build: pub_media declares audio and catalog priority 64, video 128.
+ARG AIOMOQT="aiomoqt @ git+https://github.com/gmarzot/aiomoqt@3d920db"
 RUN pip wheel --no-cache-dir --wheel-dir /wheels . "${AIOMOQT}"
 
 FROM python:3.12-slim-bookworm
