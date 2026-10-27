@@ -102,6 +102,7 @@ class Job:
         self.expired = False
         self._deadline: float | None = None  # monotonic end of the TTL, set by the first run
         self._stop_requested = asyncio.Event()
+        self._kill_requested = False
         self._adapter: asyncio.subprocess.Process | None = None
         self._source: asyncio.subprocess.Process | None = None
         self._stopping = False
@@ -278,6 +279,7 @@ class Job:
     def kill(self) -> None:
         """SIGKILL the adapter's process group now."""
         self._stopping = True
+        self._kill_requested = True
         self._stop_requested.set()
         self._kill()
 
@@ -309,6 +311,11 @@ class Job:
             preexec_fn=self._preexec,
         )
         self._record(self._adapter)
+        # Apply a stop or kill that arrived before the tool existed.
+        if self._kill_requested:
+            self._kill()
+        elif self._stop_requested.is_set():
+            self.stop()
         if self._deadline is None:
             self._deadline = time.monotonic() + self.request["ttl_s"]
         ttl = asyncio.get_running_loop().call_later(self.remaining(), self._expire)

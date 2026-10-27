@@ -11,6 +11,7 @@ import shutil
 import signal
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
@@ -106,6 +107,31 @@ def _collect(job, stop_after=None):
         return rc
 
     return asyncio.run(go()), events, logs
+
+
+def _run_after(job, request):
+    """Run the job after a stop or kill request that came before the tool started."""
+
+    async def go():
+        check = await job.check()
+        request(job)
+        t0 = time.monotonic()
+        rc = await job.run(check, lambda e: None, lambda line: None)
+        return rc, time.monotonic() - t0
+
+    return asyncio.run(go())
+
+
+def test_stop_before_start_is_honoured(fake_tool, tmp_path):
+    job = _job(fake_tool, tmp_path, ttl=30)
+    rc, took = _run_after(job, lambda j: j.stop())
+    assert rc == EXIT_OK and job.state == "ended" and took < 5
+
+
+def test_kill_before_start_is_honoured(fake_tool, tmp_path):
+    job = _job(fake_tool, tmp_path, ttl=30, content="noise")  # ignores SIGINT
+    rc, took = _run_after(job, lambda j: j.kill())
+    assert job.state == "killed" and took < 5
 
 
 def test_should_restart(fake_tool, tmp_path):
