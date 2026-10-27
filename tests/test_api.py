@@ -309,14 +309,31 @@ def test_grafana_forward_auth(client, keys):
     assert browser.status_code == 302 and browser.headers["location"] == "/"
     viewer = client.get("/auth/grafana", headers={**bearer(keys["run"]), **forged})
     assert viewer.status_code == 200
-    assert viewer.headers["x-webauth-user"] == "mtt-run-user"
+    assert viewer.headers["x-webauth-user"] == f"mtt-{auth.parse(keys['run'])[0]}"
     assert viewer.headers["x-webauth-role"] == "Viewer"
+    assert viewer.headers["x-webauth-name"] == "run-user"
     admin = client.get("/auth/grafana", headers=bearer(keys["admin"]))
     assert admin.headers["x-webauth-role"] == "Admin"
     odd = auth.new_key(client.app.state.db, 'a "b"\nc', "view")
+    assert client.get("/auth/grafana", headers=bearer(odd)).headers["x-webauth-name"] == "a _b__c"
+    post = {"X-Forwarded-Method": "POST"}
+    assert client.get("/auth/grafana", headers={**bearer(keys["run"]), **post}).status_code == 200
+
+
+def test_grafana_cookie_needs_origin_for_unsafe_methods(client, keys):
+    client.post("/login", json={"key": keys["run"]}, headers={"Origin": ORIGIN})
+    assert client.get("/auth/grafana").status_code == 200
+    post = {"X-Forwarded-Method": "POST"}
+    assert client.get("/auth/grafana", headers=post).status_code == 403
     assert (
-        client.get("/auth/grafana", headers=bearer(odd)).headers["x-webauth-user"] == "mtt-a__b__c"
+        client.get("/auth/grafana", headers={**post, "Origin": "https://evil"}).status_code == 403
     )
+    assert client.get("/auth/grafana", headers={**post, "Origin": ORIGIN}).status_code == 200
+    client.cookies.set("mtt_session", "forged.0.x")
+    for _ in range(12):  # stale or forged sessions don't count toward the lockout
+        assert client.get("/auth/grafana").status_code == 401
+    client.cookies.clear()
+    assert client.get("/auth/grafana", headers=bearer(keys["run"])).status_code == 200
 
 
 def test_login_session_and_origin(client, keys):

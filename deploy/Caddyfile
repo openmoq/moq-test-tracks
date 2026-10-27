@@ -17,9 +17,10 @@
 	route @grafana {
 		request_header -X-WEBAUTH-USER
 		request_header -X-WEBAUTH-ROLE
+		request_header -X-WEBAUTH-NAME
 		forward_auth api:8080 {
 			uri /auth/grafana
-			copy_headers X-WEBAUTH-USER X-WEBAUTH-ROLE
+			copy_headers X-WEBAUTH-USER X-WEBAUTH-ROLE X-WEBAUTH-NAME
 		}
 		reverse_proxy grafana:3000
 	}

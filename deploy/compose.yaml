@@ -119,7 +119,7 @@ services:
       GF_AUTH_PROXY_ENABLED: "true"
       GF_AUTH_PROXY_HEADER_NAME: X-WEBAUTH-USER
       GF_AUTH_PROXY_HEADER_PROPERTY: username
-      GF_AUTH_PROXY_HEADERS: Role:X-WEBAUTH-ROLE
+      GF_AUTH_PROXY_HEADERS: Role:X-WEBAUTH-ROLE Name:X-WEBAUTH-NAME
       GF_AUTH_PROXY_AUTO_SIGN_UP: "true"
       GF_AUTH_PROXY_WHITELIST: 172.31.251.2
       GF_AUTH_PROXY_ENABLE_LOGIN_TOKEN: "false"
@@ -154,7 +154,8 @@ networks:
     ipam: {config: [{subnet: 172.31.250.0/24, gateway: 172.31.250.1}]}
   obs-proxy:
     internal: true
-    ipam: {config: [{subnet: 172.31.251.0/24, gateway: 172.31.251.1}]}
+    # Dynamic addresses come from the upper half, so the proxy's .2 stays free.
+    ipam: {config: [{subnet: 172.31.251.0/24, ip_range: 172.31.251.128/25, gateway: 172.31.251.1}]}
 
 volumes:
   caddy-data: {}
