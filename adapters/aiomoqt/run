@@ -24,6 +24,9 @@ FRACTIONAL_RATES = {
     "59_94": Fraction(60000, 1001),
 }
 TARGET_LATENCY_MS = 250  # draft §Tracks
+FETCH_GROUPS = 2  # history holds the current and previous group
+FETCH_FLOOR = 64 << 10
+AUDIO_FRAME_MS = Fraction(1024, 48)  # AAC at 48 kHz; Opus frames are shorter
 
 
 def plan(req, python=sys.executable):
@@ -61,7 +64,7 @@ def plan(req, python=sys.executable):
     argv += [e["url"] for e in endpoints]
     argv += ["-N", "/".join(req["namespace"]), "--draft", str(endpoints[0]["draft"])]
     argv += ["-t", str(duration), "--forward", "1", "--stats", "2", "--stats-json"]
-    argv += ["--timestamp-mapping", "--reconnect"]
+    argv += ["--timestamp-mapping", "--reconnect", "--fetch-history", str(_fetch_history(f))]
     argv.append("--pub-ns" if req["mode"] == "namespace" else "--pub-both")
     if not req["tls"].get("verify", True):
         argv.append("-k")
@@ -93,6 +96,17 @@ def plan(req, python=sys.executable):
             " not in the media itself"
         )
     return {"accept": True, "source": source, "argv": argv, "notes": notes}
+
+
+def _fetch_history(f):
+    """--fetch-history bytes, one size for every track: FETCH_GROUPS of the larger track."""
+    sizes = [FETCH_FLOOR]
+    if f["video_codec"] != "none":
+        sizes.append(FETCH_GROUPS * f["group_ms"] * f["video_kbps"] // 8)
+    if f["audio_codec"] != "none":
+        group_ms = f["audio_frames_per_group"] * AUDIO_FRAME_MS
+        sizes.append(int(FETCH_GROUPS * group_ms * f["audio_kbps"] / 8))
+    return max(sizes)
 
 
 def _cadence(f):

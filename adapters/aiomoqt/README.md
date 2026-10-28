@@ -26,6 +26,7 @@ publishes but does not encode, so the service supplies the source media.
 | catalog `msf` | `--target-latency 250` |
 | init data, `loc` | `--init-data catalog\|track\|object` |
 | relay lost mid-run, or a GOAWAY | `--reconnect` (redials at once on GOAWAY) |
+| FETCH (draft §Publisher Behavior) | `--fetch-history <bytes>`: two groups of the larger track at its bitrate, at least 64 KiB |
 
 Status: pub_media writes `@mtt` events itself (`--stats-json`); the adapter
 passes them through and sends the rest of its output to the job log.
@@ -40,5 +41,5 @@ Refused in check mode, or not yet conformant, until aiomoqt supports them:
 | `av1` via `--ts` | AV1 in the TS source |
 | `request.json` | optional native contract support (no adapter needed) |
 | on-demand prefix serving | `--serve-prefix` (draft §Publisher Behavior, on demand) |
-| FETCH of media tracks is refused (NOT_SUPPORTED); only the catalog answers | `--fetch-history BYTES` (draft §Publisher Behavior) |
+| FETCH history fills only while a subscriber has the track forwarding; a FETCH while paused finds none | keep history while paused |
 | a GOAWAY's New Session URI is followed to any host, off the relay allowlist | an allowlist for GOAWAY URIs (aiomoqt 0.15.0 or later) |
