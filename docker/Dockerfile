@@ -9,8 +9,8 @@ WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 # aiomoqt gmarzot-0.14.0 development branch.
-ARG AIOMOQT="aiomoqt @ git+https://github.com/gmarzot/aiomoqt@7215847"
-ARG AIOPQUIC="aiopquic==0.7.0rc1"
+ARG AIOMOQT="aiomoqt @ git+https://github.com/gmarzot/aiomoqt@1b6ff16"
+ARG AIOPQUIC="aiopquic==0.7.0rc2"
 RUN pip wheel --no-cache-dir --wheel-dir /wheels . "${AIOMOQT}" "${AIOPQUIC}"
 
 FROM python:3.12-slim-bookworm
