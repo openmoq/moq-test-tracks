@@ -8,7 +8,7 @@ RUN apt-get update \
 WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-ARG AIOMOQT="aiomoqt==0.13.2"
+ARG AIOMOQT="aiomoqt==0.13.3"
 RUN pip wheel --no-cache-dir --wheel-dir /wheels . "${AIOMOQT}"
 
 FROM python:3.12-slim-bookworm
