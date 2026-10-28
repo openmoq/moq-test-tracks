@@ -62,7 +62,7 @@ def test_loc_h264_is_live_ts():
     assert argv[argv.index("--ts-cadence") + 1] == "fps=30,gop=60"
     assert argv[argv.index("--catalog-bitrate") + 1] == "600000"
     assert argv[argv.index("--init-data") + 1] == "catalog" and "--no-catalog" not in argv
-    assert argv[argv.index("--target-latency") + 1] == "200"
+    assert argv[argv.index("--target-latency") + 1] == "250"
     assert argv[argv.index("--audio-frames-per-group") + 1] == "1"
     assert "--video-subgroups" not in argv and "--audio-subgroups" not in argv
     assert p["notes"] == []
@@ -83,7 +83,7 @@ def test_no_catalog():
 def test_cmaf_leaves_init_data_to_the_catalog():
     p = adapter.plan(_request(packaging="cmaf"))
     assert p["accept"] and "--init-data" not in p["argv"] and "--ts-cadence" not in p["argv"]
-    assert p["argv"][p["argv"].index("--target-latency") + 1] == "200"
+    assert p["argv"][p["argv"].index("--target-latency") + 1] == "250"
 
 
 def test_datagram_audio_over_webtransport():

@@ -23,7 +23,7 @@ FRACTIONAL_RATES = {
     "29_97": Fraction(30000, 1001),
     "59_94": Fraction(60000, 1001),
 }
-TARGET_LATENCY_MS = 200  # draft §Tracks
+TARGET_LATENCY_MS = 250  # draft §Tracks
 
 
 def plan(req, python=sys.executable):
