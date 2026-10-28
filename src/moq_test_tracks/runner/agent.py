@@ -33,11 +33,17 @@ from ..spec.namespace import Namespace, decode, from_text, render, to_slash
 from .request import build as build_request
 from .supervisor import CheckResult, Job, JobError
 
-ACTIVE = ("requested", "checked", "starting", "running", "stopping")
+ACTIVE = ("requested", "checked", "starting", "running", "reconnecting", "stopping")
 EVENT_BACKLOG = 300
 FINISHED_KEEP = 100
 HEARTBEAT_S = 15
 LISTENER_QUEUE = 1000
+# Restarts after the tool lost every relay: exponential backoff, a cap on
+# consecutive attempts, and a run this long counts as recovered.
+RESTART_BACKOFF_S = 1.0
+RESTART_BACKOFF_MAX_S = 30.0
+RESTART_MAX = 20
+RESTART_STABLE_S = 60.0
 
 
 class JobIn(BaseModel):
@@ -75,6 +81,7 @@ class Entry:
     task: asyncio.Task | None = None
     seq: int = 0
     last_state: str = ""
+    restarts: int = 0
 
     @property
     def id(self) -> str:
@@ -121,6 +128,7 @@ class Entry:
             "exit_code": self.exit_code,
             "error": self.error,
             "last_stats": self.last_stats,
+            "restarts": self.restarts,
         }
 
 
@@ -262,11 +270,33 @@ class Registry:
         def on_log(line: str) -> None:
             entry.publish("log", line)
 
+        job, attempt = entry.job, 0
         try:
-            entry.exit_code = await entry.job.run(entry.check, on_event, on_log)
+            while True:
+                started = time.monotonic()
+                entry.exit_code = await job.run(entry.check, on_event, on_log)
+                if not job.should_restart(entry.exit_code):
+                    break
+                attempt = 1 if time.monotonic() - started >= RESTART_STABLE_S else attempt + 1
+                if attempt > RESTART_MAX:
+                    break
+                delay = min(RESTART_BACKOFF_MAX_S, RESTART_BACKOFF_S * 2 ** (attempt - 1))
+                entry.restarts += 1
+                entry.publish(
+                    "event",
+                    {
+                        "event": "restart",
+                        "attempt": attempt,
+                        "delay_s": delay,
+                        "exit_code": entry.exit_code,
+                    },
+                )
+                entry.sync_state()
+                if not await job.wait_restart(delay):
+                    break
         except Exception as e:  # any failure ends the job, never the agent
             entry.error = str(e)
-            entry.job.state = "failed"
+            job.state = "failed"
         entry.sync_state()
 
     def stop(self, job_id: str, force: bool = False) -> Entry:

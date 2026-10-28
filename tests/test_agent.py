@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from test_supervisor import FAKE_ADAPTER
 
 from moq_test_tracks import config
+from moq_test_tracks.runner import agent
 from moq_test_tracks.runner.agent import create_app, sweep_orphans
 
 TOKEN = "t0ken"
@@ -81,6 +82,59 @@ def _wait(client, job_id, states, timeout=10):
             return job
         time.sleep(0.05)
     raise AssertionError(f"job {job_id} never reached {states}")
+
+
+def _until(client, job_id, check, timeout=10):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        job = client.get(f"/jobs/{job_id}", headers=AUTH).json()
+        if check(job):
+            return job
+        time.sleep(0.05)
+    raise AssertionError(f"job {job_id}: condition not met: {job}")
+
+
+@pytest.fixture
+def relay_loss(root, monkeypatch):
+    """The fake adapter exits 69 (every relay lost) this many more times."""
+    monkeypatch.setattr(agent, "RESTART_BACKOFF_S", 0.05)
+    monkeypatch.setattr(agent, "RESTART_BACKOFF_MAX_S", 0.2)
+    jobs = root / "var" / "jobs"
+    jobs.mkdir(parents=True, exist_ok=True)
+    return lambda n: (jobs / "fail-next").write_text(str(n))
+
+
+def test_restart_after_relay_loss(client, relay_loss):
+    relay_loss(2)
+    job = client.post("/jobs", json=_job(), headers=AUTH).json()
+    back = _until(client, job["id"], lambda j: j["restarts"] == 2 and j["state"] == "running")
+    assert back["namespace"] == job["namespace"]
+    client.post("/stop-all", headers=AUTH)
+
+
+def test_stop_while_reconnecting(client, relay_loss, monkeypatch):
+    monkeypatch.setattr(agent, "RESTART_BACKOFF_S", 30.0)
+    relay_loss(1)
+    job = client.post("/jobs", json=_job(), headers=AUTH).json()
+    _wait(client, job["id"], ("reconnecting",))
+    assert client.get("/jobs?active=true", headers=AUTH).json()[0]["id"] == job["id"]
+    client.delete(f"/jobs/{job['id']}", headers=AUTH)
+    assert _wait(client, job["id"], ("ended",))["restarts"] == 1
+
+
+def test_restart_gives_up(client, relay_loss, monkeypatch):
+    monkeypatch.setattr(agent, "RESTART_MAX", 2)
+    relay_loss(10)
+    job = client.post("/jobs", json=_job(), headers=AUTH).json()
+    failed = _wait(client, job["id"], ("failed",))
+    assert failed["restarts"] == 2 and failed["exit_code"] == 69
+
+
+def test_ttl_ends_reconnecting(client, relay_loss, monkeypatch):
+    monkeypatch.setattr(agent, "RESTART_BACKOFF_S", 30.0)
+    relay_loss(1)
+    job = client.post("/jobs", json=_job(ttl_s=1), headers=AUTH).json()
+    assert _wait(client, job["id"], ("expired",), timeout=5)["restarts"] == 1
 
 
 def test_token_required(client):
