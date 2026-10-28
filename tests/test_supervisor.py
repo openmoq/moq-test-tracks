@@ -134,6 +134,29 @@ def test_kill_before_start_is_honoured(fake_tool, tmp_path):
     assert job.state == "killed" and took < 5
 
 
+def test_endpoint_events_drive_state(fake_tool, tmp_path):
+    job = _job(fake_tool, tmp_path)
+    job.state = "starting"
+    states = []
+    for event in (
+        {"event": "ready", "endpoints": [
+            {"url": "a", "state": "up"}, {"url": "b", "state": "up"}, {"url": "c", "state": "down"},
+        ]},
+        {"event": "endpoint_lost", "url": "a"},
+        {"event": "endpoint_lost", "url": "b"},
+        {"event": "endpoint_up", "url": "b"},
+    ):  # fmt: skip
+        job._track(event)
+        states.append(job.state)
+    assert states == ["running", "running", "reconnecting", "running"]
+    job._track({"event": "ready"})  # no endpoint list: the request's endpoints are up
+    job._track({"event": "endpoint_lost", "url": "moqt://127.0.0.1:4433"})
+    assert job.state == "reconnecting"
+    job.state = "stopping"
+    job._track({"event": "endpoint_up", "url": "moqt://127.0.0.1:4433"})
+    assert job.state == "stopping"
+
+
 def test_should_restart(fake_tool, tmp_path):
     job = _job(fake_tool, tmp_path)
     assert job.should_restart(69)

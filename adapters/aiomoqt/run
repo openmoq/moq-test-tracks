@@ -13,10 +13,16 @@ import os
 import signal
 import subprocess
 import sys
+from fractions import Fraction
 
 EXIT_REFUSED = 64
 EXIT_UNAVAILABLE = 69
 EXIT_INTERNAL = 70
+FRACTIONAL_RATES = {
+    "23_976": Fraction(24000, 1001),
+    "29_97": Fraction(30000, 1001),
+    "59_94": Fraction(60000, 1001),
+}
 
 
 def plan(req, python=sys.executable):
@@ -29,22 +35,15 @@ def plan(req, python=sys.executable):
 
     packaging = f["packaging"]
     has_audio = f["audio_codec"] != "none"
-    if f["catalog"] == "none":
-        refuse("catalog", "pub_media always publishes a catalog")
     if f["video_forwarding"] == 1 and packaging == "locmaf":
         refuse("video_forwarding", "LOCMAF has one subgroup per group")
     if f["content"] == "clip" and not req.get("clip"):
         refuse("content", "clip content needs the request's clip")
-    if f["init_data"] in ("track", "object"):
-        refuse("init_data", "init data carriage is not selectable yet (catalog only)")
     if has_audio and f["audio_forwarding"] == 1 and packaging == "locmaf":
         refuse("audio_forwarding", "LOCMAF has one subgroup per group")
     endpoints = req["endpoints"]
-    if f["audio_forwarding"] == 3:
-        if packaging != "loc":
-            refuse("audio_forwarding", "datagram audio is LOC only")
-        if any(e["transport"] != "moqt" for e in endpoints):
-            refuse("transport", "datagrams need raw QUIC (moqt://)")
+    if f["audio_forwarding"] == 3 and packaging != "loc":
+        refuse("audio_forwarding", "datagram audio is LOC only")
     if len({e["draft"] for e in endpoints}) != 1:
         refuse("endpoints", "all endpoints must use the same draft")
     if req["tls"].get("ca_file"):
@@ -61,14 +60,19 @@ def plan(req, python=sys.executable):
     argv += [e["url"] for e in endpoints]
     argv += ["-N", "/".join(req["namespace"]), "--draft", str(endpoints[0]["draft"])]
     argv += ["-t", str(duration), "--forward", "1", "--stats", "2", "--stats-json"]
-    argv.append("--timestamp-mapping")
+    argv += ["--timestamp-mapping", "--reconnect"]
     argv.append("--pub-ns" if req["mode"] == "namespace" else "--pub-both")
     if not req["tls"].get("verify", True):
         argv.append("-k")
     if live:
-        argv += ["--ts", path]
+        argv += ["--ts", path, "--ts-cadence", _cadence(f)]
+        argv += ["--catalog-bitrate", str(f["video_kbps"] * 1000)]
     else:
         argv += ["--mp4", path, "--loop", "--packaging", packaging]
+    if f["catalog"] == "none":
+        argv.append("--no-catalog")
+    elif packaging == "loc":
+        argv += ["--init-data", f["init_data"]]
     if f["video_forwarding"] == 1:
         argv += ["--video-subgroups", "object"]
     if not has_audio:
@@ -80,11 +84,20 @@ def plan(req, python=sys.executable):
         elif f["audio_forwarding"] == 3:
             argv.append("-D")
     notes = []
-    if f["init_data"] == "catalog":
+    if f["catalog"] == "none":
         notes.append(
-            "pub_media also sends VIDEO_CONFIG / AUDIO_CONFIG on each group's first object"
+            "decoder config rides VIDEO_CONFIG / AUDIO_CONFIG on each group's first object,"
+            " not in the media itself"
         )
     return {"accept": True, "source": source, "argv": argv, "notes": notes}
+
+
+def _cadence(f):
+    """--ts-cadence for the namespace's frame rate and group duration."""
+    fps = FRACTIONAL_RATES.get(f["frame_rate"]) or Fraction(f["frame_rate"])
+    gop = int(Fraction(f["group_ms"], 1000) * fps)
+    rate = str(fps.numerator) if fps.denominator == 1 else f"{fps.numerator}/{fps.denominator}"
+    return f"fps={rate},gop={gop}"
 
 
 def run(req):
@@ -114,9 +127,7 @@ def run(req):
         print("@mtt " + json.dumps({"event": "done", "reason": f"exit {rc}"}), flush=True)
     if rc == 0 or rc == -signal.SIGINT:
         return 0
-    if rc == EXIT_REFUSED:  # a datagram Object did not fit
-        return EXIT_REFUSED
-    return EXIT_UNAVAILABLE if rc == 1 else EXIT_INTERNAL
+    return rc if rc in (EXIT_REFUSED, EXIT_UNAVAILABLE, EXIT_INTERNAL) else EXIT_INTERNAL
 
 
 def _event(line):
