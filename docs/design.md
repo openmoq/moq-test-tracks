@@ -305,9 +305,11 @@ Everything is in `deploy/compose.yaml`; the host only needs Docker.
   publishes any.
 - **Certificates:** Caddy's automatic HTTPS (HTTP-01 / TLS-ALPN-01).
 - **Monitoring:** node-exporter (host CPU, memory, disk, network), the
-  runner's `/metrics` (jobs against the caps, per-job bitrate, restarts after
-  relay loss), Prometheus (30 days, at most 4 GB) and Grafana at
-  `/grafana/` with two provisioned dashboards, Platform and Service.
+  runner's `/metrics` (jobs against the caps; per job its state, restarts
+  after relay loss, and per track its bitrate, send rate and drops),
+  Prometheus (30 days, at most 4 GB) and Grafana at `/grafana/` with two
+  provisioned dashboards: the overview (host load, then the jobs), which is
+  Grafana's home and the dashboard's Metrics link, and Platform detail.
   - None of them publishes a port. node-exporter runs in the host network
     and PID namespaces, so it sees the host's interfaces, and listens only
     on the `obs` bridge address; deploy.sh adds the one ufw rule that lets
