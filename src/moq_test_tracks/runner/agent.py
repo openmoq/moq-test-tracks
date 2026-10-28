@@ -191,7 +191,12 @@ class Registry:
             raise Rejected(
                 422, [f"clip {clip.id} has not been fetched (mtt media fetch {clip.id})"]
             )
-        return {"id": clip.id, "path": str(mezz.path), "attribution": clip.attribution}
+        return {
+            "id": clip.id,
+            "path": str(mezz.path),
+            "attribution": clip.attribution,
+            "loop_s": clip.loop_s,
+        }
 
     def _job(self, body, tool, relay, namespace, spec, draft, ttl, clip, work: Path) -> Job:
         req = build_request(

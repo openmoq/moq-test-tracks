@@ -118,3 +118,5 @@ def test_clip_encodes_the_mezzanine_to_the_shape():
     assert live[live.index("-stream_loop") - 1] == "-re"
     other = source_command(_spec(content="clip"), "mp4", "o.mp4", {**CLIP, "path": "/x.mkv"})
     assert other != argv  # a new recording gets a new cache key
+    long = source_command(_spec(content="clip"), "mp4", "o.mp4", {**CLIP, "loop_s": 150})
+    assert _value(long, "-t") == "150.000"
