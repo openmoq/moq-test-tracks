@@ -174,6 +174,7 @@ These rules hold for every tool. They restate the draft operationally.
 - The catalog lists exactly the published media tracks, with codec strings
   and parameters that match `fields`. With `cmaf` or `locmaf` packaging it
   uses the CMSF extensions.
+- Every track is live (`isLive` true) with `targetLatency` 200.
 - Carry decoder initialization data only where `init_data` says:
   - `catalog`: inline in the catalog's initialization data list;
   - `track`: in the VIDEO_CONFIG or AUDIO_CONFIG Track Property;

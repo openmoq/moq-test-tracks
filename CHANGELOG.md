@@ -29,6 +29,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Changed
 
+- MSF catalogs give every track a `targetLatency` of 200 ms, as the draft now fixes; the aiomoqt adapter passes `--target-latency 200`.
 - Job caps: 16 jobs in total, per key and for aiomoqt (were 6, 2 and 6). Live encodes stay capped at 2.
 - **Breaking:** relay ids are `moqx-main` (was `moqx_main`) and `aiomoqt-relay`, which replaces `moqarena`; both match their hostnames. `aiomoqt-relay` tracks aiomoqt dev builds.
 - **Breaking:** content `ts` (tuple field 15) is renamed `clock`, following the draft, which now names content classes by what they measure and requires the capture time in the picture. Namespaces, presets, the dashboard and the manifests use `clock`.

@@ -23,6 +23,7 @@ FRACTIONAL_RATES = {
     "29_97": Fraction(30000, 1001),
     "59_94": Fraction(60000, 1001),
 }
+TARGET_LATENCY_MS = 200  # draft §Tracks
 
 
 def plan(req, python=sys.executable):
@@ -71,8 +72,10 @@ def plan(req, python=sys.executable):
         argv += ["--mp4", path, "--loop", "--packaging", packaging]
     if f["catalog"] == "none":
         argv.append("--no-catalog")
-    elif packaging == "loc":
-        argv += ["--init-data", f["init_data"]]
+    else:
+        argv += ["--target-latency", str(TARGET_LATENCY_MS)]
+        if packaging == "loc":
+            argv += ["--init-data", f["init_data"]]
     if f["video_forwarding"] == 1:
         argv += ["--video-subgroups", "object"]
     if not has_audio:
