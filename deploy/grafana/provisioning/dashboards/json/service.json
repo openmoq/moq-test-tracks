@@ -1,7 +1,7 @@
 {
   "uid": "mtt-service",
-  "title": "moq-test-tracks service",
-  "description": "Jobs against the caps, per-job publisher bitrate, and restarts after relay loss.",
+  "title": "moq-test-tracks",
+  "description": "Host load at the top (Platform detail for more), then the jobs: what each is sending, its encode rate, drops and relay-loss restarts.",
   "schemaVersion": 39,
   "editable": false,
   "time": {
@@ -12,6 +12,20 @@
   "tags": [
     "moq-test-tracks"
   ],
+  "links": [
+    {
+      "title": "Platform detail",
+      "type": "link",
+      "url": "/grafana/d/mtt-platform",
+      "icon": "dashboard",
+      "keepTime": true,
+      "targetBlank": false,
+      "tooltip": "",
+      "asDropdown": false,
+      "includeVars": false,
+      "tags": []
+    }
+  ],
   "timepicker": {},
   "templating": {
     "list": []
@@ -21,17 +35,424 @@
   },
   "panels": [
     {
+      "type": "row",
+      "title": "Platform",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "id": 1
+    },
+    {
+      "type": "gauge",
+      "title": "CPU busy",
+      "description": "All cores, last minute.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "links": [
+        {
+          "title": "Platform detail",
+          "url": "/grafana/d/mtt-platform",
+          "targetBlank": false
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[1m])))",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showThresholdMarkers": false,
+        "showThresholdLabels": false
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "id": 2
+    },
+    {
+      "type": "gauge",
+      "title": "Memory used",
+      "description": "Excluding reclaimable cache.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "links": [
+        {
+          "title": "Platform detail",
+          "url": "/grafana/d/mtt-platform",
+          "targetBlank": false
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showThresholdMarkers": false,
+        "showThresholdLabels": false
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "id": 3
+    },
+    {
+      "type": "gauge",
+      "title": "Disk used (/)",
+      "description": "Root filesystem.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "links": [
+        {
+          "title": "Platform detail",
+          "url": "/grafana/d/mtt-platform",
+          "targetBlank": false
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"})",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showThresholdMarkers": false,
+        "showThresholdLabels": false
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "id": 4
+    },
+    {
+      "type": "stat",
+      "title": "Load per core",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_load1 / scalar(count(count by (cpu) (node_cpu_seconds_total)))",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "description": "1-minute load average over the core count.",
+      "links": [
+        {
+          "title": "Platform detail",
+          "url": "/grafana/d/mtt-platform",
+          "targetBlank": false
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "id": 5
+    },
+    {
+      "type": "stat",
+      "title": "Network out",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "8 * rate(node_network_transmit_bytes_total{device=\"eth0\"}[1m])",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "description": "eth0, last minute.",
+      "links": [
+        {
+          "title": "Platform detail",
+          "url": "/grafana/d/mtt-platform",
+          "targetBlank": false
+        }
+      ],
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "id": 6
+    },
+    {
+      "type": "stat",
+      "title": "Network in",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "8 * rate(node_network_receive_bytes_total{device=\"eth0\"}[1m])",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "description": "eth0, last minute.",
+      "links": [
+        {
+          "title": "Platform detail",
+          "url": "/grafana/d/mtt-platform",
+          "targetBlank": false
+        }
+      ],
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "id": 7
+    },
+    {
+      "type": "row",
+      "title": "Service",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 1
+      },
+      "id": 8
+    },
+    {
       "type": "stat",
       "title": "Active jobs",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 0,
-        "w": 6,
-        "h": 4
       },
       "targets": [
         {
@@ -65,9 +486,118 @@
           ]
         },
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "textMode": "value"
-      }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 3,
+        "h": 4
+      },
+      "id": 9
+    },
+    {
+      "type": "stat",
+      "title": "Sending",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(sum by (job_id) (mtt_job_objects_per_second) > 0) or vector(0)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "description": "Jobs sending objects: a relay is forwarding at least one of their tracks.",
+      "gridPos": {
+        "x": 3,
+        "y": 7,
+        "w": 3,
+        "h": 4
+      },
+      "id": 10
+    },
+    {
+      "type": "stat",
+      "title": "Idle (paused)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(sum by (job_id) (mtt_job_objects_per_second) == 0) or vector(0)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "description": "Jobs whose tracks the relay has paused (Forward State 0): nobody is watching.",
+      "gridPos": {
+        "x": 6,
+        "y": 7,
+        "w": 3,
+        "h": 4
+      },
+      "id": 11
     },
     {
       "type": "stat",
@@ -75,12 +605,6 @@
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 6,
-        "y": 0,
-        "w": 6,
-        "h": 4
       },
       "targets": [
         {
@@ -122,22 +646,23 @@
           ]
         },
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "textMode": "value"
-      }
+      },
+      "gridPos": {
+        "x": 9,
+        "y": 7,
+        "w": 3,
+        "h": 4
+      },
+      "id": 12
     },
     {
       "type": "stat",
-      "title": "Live encodes used",
+      "title": "Live encodes",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 0,
-        "w": 6,
-        "h": 4
       },
       "targets": [
         {
@@ -179,22 +704,75 @@
           ]
         },
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "textMode": "value"
-      }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 7,
+        "w": 3,
+        "h": 4
+      },
+      "id": 13
     },
     {
       "type": "stat",
-      "title": "Relay-loss restarts (1 h)",
+      "title": "Objects / s",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(mtt_job_objects_per_second) or vector(0)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "description": "Objects sent per second, all jobs, video and audio.",
       "gridPos": {
-        "x": 18,
-        "y": 0,
-        "w": 6,
+        "x": 15,
+        "y": 7,
+        "w": 3,
         "h": 4
+      },
+      "id": 14
+    },
+    {
+      "type": "stat",
+      "title": "Restarts (1 h)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "targets": [
         {
@@ -237,9 +815,463 @@
           ]
         },
         "colorMode": "value",
-        "graphMode": "area",
+        "graphMode": "none",
         "textMode": "value"
-      }
+      },
+      "description": "Tool restarts after losing every relay.",
+      "gridPos": {
+        "x": 18,
+        "y": 7,
+        "w": 3,
+        "h": 4
+      },
+      "id": 15
+    },
+    {
+      "type": "stat",
+      "title": "Drops (1 h)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(mtt_job_dropped_total[1h])) or vector(0)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "description": "Objects the publishers dropped in the last hour.",
+      "gridPos": {
+        "x": 21,
+        "y": 7,
+        "w": 3,
+        "h": 4
+      },
+      "id": 16
+    },
+    {
+      "type": "table",
+      "title": "Jobs",
+      "description": "Active jobs. obj/s is what the publisher sends: paused when the relay holds the track at Forward State 0. Encoded is the encode rate.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job_id, content, relay, packaging, video, state) (mtt_job_info)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (job_id, content, relay, packaging, video) (mtt_job_objects_per_second{track=\"video\"})",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (job_id, content, relay, packaging, video) (mtt_job_objects_per_second{track=\"audio\"})",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "expr": "1000 * sum by (job_id, content, relay, packaging, video) (mtt_job_kbps)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "expr": "sum by (job_id, content, relay, packaging, video) (mtt_job_dropped_total)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "expr": "sum by (job_id, content, relay, packaging, video) (mtt_job_restarts_total)",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value #A": true
+            },
+            "indexByName": {
+              "job_id": 0,
+              "content": 1,
+              "relay": 2,
+              "packaging": 3,
+              "video": 4,
+              "state": 5,
+              "Value #B": 6,
+              "Value #C": 7,
+              "Value #D": 8,
+              "Value #E": 9,
+              "Value #F": 10
+            },
+            "renameByName": {
+              "job_id": "Job",
+              "content": "Content",
+              "relay": "Relay",
+              "packaging": "Packaging",
+              "video": "Video",
+              "state": "State",
+              "Value #B": "Video obj/s",
+              "Value #C": "Audio obj/s",
+              "Value #D": "Encoded",
+              "Value #E": "Dropped",
+              "Value #F": "Restarts"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Video obj/s"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "paused",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Audio obj/s"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "paused",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Encoded"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bps"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Job"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Packaging"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Video"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 85
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "State"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 115
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dropped"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Restarts"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "State"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "reconnecting": {
+                        "color": "orange",
+                        "index": 0
+                      },
+                      "starting": {
+                        "color": "blue",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Content"
+          }
+        ]
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 9
+      },
+      "id": 17
+    },
+    {
+      "type": "timeseries",
+      "title": "Video objects sent / s",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job_id, content, relay, packaging, video) (mtt_job_objects_per_second{track=\"video\"})",
+          "legendFormat": "{{content}} {{packaging}} {{video}} @ {{relay}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "drawStyle": "line",
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Zero while the relay has the track paused.",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "id": 18
+    },
+    {
+      "type": "timeseries",
+      "title": "Audio objects sent / s",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job_id, content, relay, packaging, video) (mtt_job_objects_per_second{track=\"audio\"})",
+          "legendFormat": "{{content}} {{packaging}} {{video}} @ {{relay}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "drawStyle": "line",
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Zero while the relay has the track paused.",
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "id": 19
     },
     {
       "type": "timeseries",
@@ -247,12 +1279,6 @@
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 4,
-        "w": 12,
-        "h": 8
       },
       "targets": [
         {
@@ -264,8 +1290,9 @@
       "fieldConfig": {
         "defaults": {
           "unit": "none",
+          "min": 0,
           "color": {
-            "mode": "palette-classic"
+            "mode": "palette-classic-by-name"
           },
           "custom": {
             "lineWidth": 2,
@@ -290,86 +1317,35 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Live encodes",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 4,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "max(mtt_live_encodes)",
-          "legendFormat": "in use"
-        },
-        {
-          "refId": "B",
-          "expr": "max(mtt_live_encodes_limit)",
-          "legendFormat": "cap"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "drawStyle": "line",
-            "showPoints": "never",
-            "spanNulls": false
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Video bitrate per job",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
       },
       "gridPos": {
         "x": 0,
-        "y": 12,
+        "y": 28,
         "w": 12,
         "h": 8
+      },
+      "id": 20
+    },
+    {
+      "type": "timeseries",
+      "title": "Encoded video bitrate per job",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "1000 * mtt_job_kbps{track=\"video\"}",
+          "expr": "1000 * sum by (job_id, content, relay, packaging, video) (mtt_job_kbps{track=\"video\"})",
           "legendFormat": "{{content}} {{packaging}} {{video}} @ {{relay}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "bps",
+          "min": 0,
           "color": {
-            "mode": "palette-classic"
+            "mode": "palette-classic-by-name"
           },
           "custom": {
             "lineWidth": 2,
@@ -391,55 +1367,15 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Audio bitrate per job",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
       },
+      "description": "The encode rate, sending or not.",
       "gridPos": {
         "x": 12,
-        "y": 12,
+        "y": 28,
         "w": 12,
         "h": 8
       },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "1000 * mtt_job_kbps{track=\"audio\"}",
-          "legendFormat": "{{content}} {{packaging}} @ {{relay}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bps",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "drawStyle": "line",
-            "showPoints": "never",
-            "spanNulls": false
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
+      "id": 21
     },
     {
       "type": "timeseries",
@@ -447,12 +1383,6 @@
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 20,
-        "w": 24,
-        "h": 8
       },
       "targets": [
         {
@@ -464,8 +1394,9 @@
       "fieldConfig": {
         "defaults": {
           "unit": "none",
+          "min": 0,
           "color": {
-            "mode": "palette-classic"
+            "mode": "palette-classic-by-name"
           },
           "custom": {
             "lineWidth": 2,
@@ -473,7 +1404,8 @@
             "drawStyle": "bars",
             "showPoints": "never",
             "spanNulls": false
-          }
+          },
+          "noValue": "None"
         },
         "overrides": []
       },
@@ -487,7 +1419,65 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "id": 22
+    },
+    {
+      "type": "timeseries",
+      "title": "Dropped objects (per 5 min)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (content, relay, track) (increase(mtt_job_dropped_total[5m])) > 0",
+          "legendFormat": "{{content}} {{track}} @ {{relay}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "drawStyle": "bars",
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "noValue": "None"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "id": 23
     }
   ]
 }

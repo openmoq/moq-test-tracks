@@ -59,11 +59,12 @@ FAKE_ADAPTER = textwrap.dedent(
     signal.signal(signal.SIGINT, signal.SIG_IGN if content == "noise" else (lambda *_: stop.append(1)))
     print("@mtt " + json.dumps({{"event": "ready"}}), flush=True)
     print("plain log line", flush=True)
-    t = 0.0
+    t, n = 0.0, 0
     while not stop:
-        print("@mtt " + json.dumps({{"event": "stats", "t": t, "tracks": {{}}}}), flush=True)
+        video = {{"objects": n, "kbps": 200, "dropped": 1}}
+        print("@mtt " + json.dumps({{"event": "stats", "t": t, "tracks": {{"video": video}}}}), flush=True)
         time.sleep(0.05)
-        t += 0.05
+        t, n = t + 0.05, n + 1
     print("@mtt " + json.dumps({{"event": "done", "reason": "signal"}}), flush=True)
     """
 )

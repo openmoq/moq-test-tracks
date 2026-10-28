@@ -146,13 +146,32 @@ def test_metrics(client):
     )
     job = client.post("/jobs", json=_job(), headers=AUTH).json()
     _wait(client, job["id"], ("running",))
-    text = client.get("/metrics").text
+    labels = f'job_id="{job["id"]}",relay="local",content="clock",packaging="loc",video="180p30"'
+    rate = f'mtt_job_objects_per_second{{{labels},track="video"}} 20.0'
+    deadline = time.time() + 5
+    while rate not in (text := client.get("/metrics").text) and time.time() < deadline:
+        time.sleep(0.05)
+    assert rate in text  # the fake sends one object per 0.05 s of its clock
     assert 'mtt_jobs{state="running"} 1' in text
-    assert (
-        f'mtt_job_restarts_total{{job="{job["id"]}",relay="local",content="clock",packaging="loc",video="180p30"}} 0'
-        in text
-    )
+    assert f"mtt_job_restarts_total{{{labels}}} 0" in text
+    assert f'mtt_job_info{{{labels},state="running",tool="fake"}} 1' in text
+    assert f'mtt_job_dropped_total{{{labels},track="video"}} 1' in text
+    assert f'mtt_job_kbps{{{labels},track="video"}} 200' in text
     client.post("/stop-all", headers=AUTH)
+
+
+@pytest.mark.parametrize(
+    "prev, cur, rates",
+    [
+        (None, {"t": 1, "tracks": {"video": {"objects": 30}}}, {}),
+        ({"t": 1, "tracks": {"video": {"objects": 30}}}, {"t": 3, "tracks": {"video": {"objects": 90}}}, {"video": 30.0}),
+        ({"t": 1, "tracks": {"video": {"objects": 30}}}, {"t": 3, "tracks": {"video": {"objects": 29}}}, {"video": 0.0}),
+        ({"t": 9, "tracks": {"video": {"objects": 30}}}, {"t": 1, "tracks": {"video": {"objects": 5}}}, {}),
+        ({"t": 1, "tracks": {}}, {"t": 3, "tracks": {"video": {"objects": 90}}}, {}),
+    ],
+)  # fmt: skip
+def test_send_rates(prev, cur, rates):
+    assert agent._send_rates(prev, cur) == rates
 
 
 def test_token_required(client):

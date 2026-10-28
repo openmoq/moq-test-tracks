@@ -76,6 +76,7 @@ class Entry:
     exit_code: int | None = None
     error: str | None = None
     last_stats: dict | None = None
+    send_rates: dict = field(default_factory=dict)
     backlog: deque = field(default_factory=lambda: deque(maxlen=EVENT_BACKLOG))
     listeners: set = field(default_factory=set)
     task: asyncio.Task | None = None
@@ -268,6 +269,7 @@ class Registry:
     async def _run(self, entry: Entry) -> None:
         def on_event(event: dict) -> None:
             if event.get("event") == "stats":
+                entry.send_rates = _send_rates(entry.last_stats, event)
                 entry.last_stats = event
             entry.publish("event", event)
             entry.sync_state()
@@ -321,7 +323,8 @@ class Registry:
         return len(active)
 
     def metrics(self) -> str:
-        """Prometheus text exposition: job counts against the caps, and per-job restarts and bitrate."""
+        """Prometheus text exposition: job counts against the caps, and per-job state, restarts,
+        bitrate, send rate and drops."""
         out: list[str] = []
 
         def metric(name: str, kind: str, doc: str, samples: list[tuple[dict, float]]) -> None:
@@ -340,25 +343,59 @@ class Registry:
         metric(
             "mtt_live_encodes_limit", "gauge", "Live encode cap.", [({}, policy.max_live_encodes)]
         )
+        metric("mtt_job_info", "gauge", "Active job: its state and tool.",
+               [({**_job_labels(e), "state": e.job.state, "tool": e.job.tool.id}, 1)
+                for e in active])  # fmt: skip
         metric("mtt_job_restarts_total", "counter", "Restarts after losing every relay.",
                [(_job_labels(e), e.restarts) for e in active])  # fmt: skip
-        kbps = []
+        kbps, dropped, rates = [], [], []
         for e in active:
+            labels = _job_labels(e)
             for track, stats in ((e.last_stats or {}).get("tracks") or {}).items():
-                if isinstance(stats, dict) and isinstance(stats.get("kbps"), int | float):
-                    kbps.append(({**_job_labels(e), "track": track}, stats["kbps"]))
+                if not isinstance(stats, dict):
+                    continue
+                if isinstance(stats.get("kbps"), int | float):
+                    kbps.append(({**labels, "track": track}, stats["kbps"]))
+                if isinstance(stats.get("dropped"), int | float):
+                    dropped.append(({**labels, "track": track}, stats["dropped"]))
+            rates += [({**labels, "track": t}, round(r, 2)) for t, r in e.send_rates.items()]
         metric(
             "mtt_job_kbps",
             "gauge",
             "Publisher bitrate per track, from the tool's last stats.",
             kbps,
         )
+        metric(
+            "mtt_job_objects_per_second",
+            "gauge",
+            "Objects sent per second per track between the tool's last two stats; 0 while paused.",
+            rates,
+        )
+        metric("mtt_job_dropped_total", "counter", "Objects the tool dropped per track.", dropped)
         return "\n".join(out) + "\n"
 
     def _prune(self) -> None:
         finished = [e for e in self.jobs.values() if not e.active]
         for e in sorted(finished, key=lambda e: e.created)[:-FINISHED_KEEP]:
             del self.jobs[e.id]
+
+
+def _send_rates(prev: dict | None, cur: dict) -> dict[str, float]:
+    """Objects sent per second per track between two stats events; a count that steps back
+    gives 0, and a clock that does not advance (tool restarted) gives no rates."""
+    if not prev:
+        return {}
+    t0, t1 = prev.get("t"), cur.get("t")
+    if not (isinstance(t0, int | float) and isinstance(t1, int | float)) or t1 <= t0:
+        return {}
+    before, rates = prev.get("tracks") or {}, {}
+    for track, stats in (cur.get("tracks") or {}).items():
+        was = before.get(track)
+        if isinstance(stats, dict) and isinstance(was, dict):
+            n0, n1 = was.get("objects"), stats.get("objects")
+            if isinstance(n0, int | float) and isinstance(n1, int | float):
+                rates[track] = max(n1 - n0, 0) / (t1 - t0)
+    return rates
 
 
 def _label(value: object) -> str:
@@ -370,7 +407,7 @@ def _job_labels(e: Entry) -> dict:
     video = f"{spec.video_height}p{spec.frame_rate}" if spec.has_video else "none"
     content = clip["id"] if clip else spec.content
     return {
-        "job": e.id,
+        "job_id": e.id,  # Prometheus reserves "job" for the scrape job
         "relay": e.relay,
         "content": content,
         "packaging": spec.packaging,

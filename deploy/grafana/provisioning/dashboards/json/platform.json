@@ -12,6 +12,20 @@
   "tags": [
     "moq-test-tracks"
   ],
+  "links": [
+    {
+      "title": "Overview",
+      "type": "link",
+      "url": "/grafana/d/mtt-service",
+      "icon": "dashboard",
+      "keepTime": true,
+      "targetBlank": false,
+      "tooltip": "",
+      "asDropdown": false,
+      "includeVars": false,
+      "tags": []
+    }
+  ],
   "timepicker": {},
   "templating": {
     "list": []
@@ -93,7 +107,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "node_load1 / count(count by (cpu) (node_cpu_seconds_total))",
+          "expr": "node_load1 / scalar(count(count by (cpu) (node_cpu_seconds_total)))",
           "instant": true
         }
       ],
