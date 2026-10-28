@@ -8,12 +8,13 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..config import Config
@@ -200,6 +201,29 @@ def create_app(
         except ValueError as e:
             raise HTTPException(422, {"errors": [str(e)]}) from None
         return body
+
+    @app.get("/auth/grafana", include_in_schema=False)
+    async def grafana_auth(request: Request) -> Response:
+        """Caddy's forward_auth for /grafana: the Grafana user and role, or a refusal."""
+        ip = client_ip(request)
+        if limiter.blocked(ip):
+            return JSONResponse({"detail": {"errors": ["too many failed authentications"]}}, 429)
+        principal, via = authenticate(request)
+        if principal is None:
+            if via == "key":  # a stale session cookie is not a guess; don't lock the IP out
+                limiter.fail(ip)
+            if "text/html" in request.headers.get("accept", ""):
+                return RedirectResponse("/", status_code=302)
+            return JSONResponse({"detail": {"errors": ["authentication required"]}}, 401)
+        # forward_auth always asks with GET; X-Forwarded-Method is the method Grafana will see.
+        method = request.headers.get("x-forwarded-method", "GET").upper()
+        if via == "cookie" and method not in SAFE_METHODS:
+            if request.headers.get("origin") not in settings.public_origins:
+                return JSONResponse({"detail": {"errors": ["cross-origin request refused"]}}, 403)
+        name = re.sub(r"[^A-Za-z0-9_. -]", "_", principal.name)[:64]
+        role = "Admin" if principal.can("admin") else "Viewer"
+        headers = {"X-WEBAUTH-USER": f"mtt-{principal.key_id}", "X-WEBAUTH-ROLE": role}
+        return Response(headers={**headers, "X-WEBAUTH-NAME": name})
 
     @app.get("/healthz")
     async def healthz() -> dict:

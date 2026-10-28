@@ -31,11 +31,21 @@ if [ ! -f .env ]; then
     cp .env.example .env
 fi
 chmod 600 .env
-for var in MTT_RUNNER_TOKEN MTT_SESSION_SECRET; do
+for var in MTT_RUNNER_TOKEN MTT_SESSION_SECRET MTT_GRAFANA_ADMIN_PASSWORD; do
+    if ! grep -q "^$var=" .env; then
+        echo "$var=" >> .env
+    fi
     if ! grep -q "^$var=." .env; then
         sed -i "s/^$var=.*/$var=$(openssl rand -hex 32)/" .env
     fi
 done
+# node-exporter listens on the obs bridge address; only that subnet may reach it.
+if command -v ufw >/dev/null && sudo -n true 2>/dev/null; then
+    if ! sudo ufw status | grep -q "^172.31.250.1 9100/tcp"; then
+        sudo ufw allow from 172.31.250.0/24 to 172.31.250.1 port 9100 proto tcp \
+            comment "mtt node-exporter" >/dev/null
+    fi
+fi
 echo "$rev" > ../REVISION
 docker compose build --pull
 docker compose up -d --remove-orphans

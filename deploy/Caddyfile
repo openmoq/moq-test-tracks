@@ -6,13 +6,27 @@
 	request_body {
 		max_size 64KB
 	}
-	reverse_proxy api:8080 {
-		# Server-sent events must not be buffered.
-		flush_interval -1
-	}
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		-Server
 	}
 	log
+
+	# Grafana: the api decides who gets in and with which role.
+	@grafana path /grafana /grafana/*
+	route @grafana {
+		request_header -X-WEBAUTH-USER
+		request_header -X-WEBAUTH-ROLE
+		request_header -X-WEBAUTH-NAME
+		forward_auth api:8080 {
+			uri /auth/grafana
+			copy_headers X-WEBAUTH-USER X-WEBAUTH-ROLE X-WEBAUTH-NAME
+		}
+		reverse_proxy grafana:3000
+	}
+
+	reverse_proxy api:8080 {
+		# Server-sent events must not be buffered.
+		flush_interval -1
+	}
 }
