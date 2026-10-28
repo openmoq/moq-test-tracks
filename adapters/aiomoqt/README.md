@@ -23,6 +23,7 @@ publishes but does not encode, so the service supplies the source media.
 | audio forwarding 3 | `-D` |
 | audio codec `none` | `--no-audio` |
 | catalog `none` | `--no-catalog` |
+| catalog `msf` | `--target-latency 250` |
 | init data, `loc` | `--init-data catalog\|track\|object` |
 | relay lost mid-run | `--reconnect` |
 
