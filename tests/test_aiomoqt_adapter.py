@@ -63,9 +63,26 @@ def test_loc_h264_is_live_ts():
     assert argv[argv.index("--catalog-bitrate") + 1] == "600000"
     assert argv[argv.index("--init-data") + 1] == "catalog" and "--no-catalog" not in argv
     assert argv[argv.index("--target-latency") + 1] == "250"
+    assert argv[argv.index("--fetch-history") + 1] == "300000"  # 2 groups of 2 s at 600 kbps
     assert argv[argv.index("--audio-frames-per-group") + 1] == "1"
     assert "--video-subgroups" not in argv and "--audio-subgroups" not in argv
     assert p["notes"] == []
+
+
+@pytest.mark.parametrize(
+    "changes, size",
+    [
+        ({}, 300_000),
+        ({"video_kbps": 6000}, 3_000_000),
+        ({"video_kbps": 12000, "group_ms": 1000}, 3_000_000),
+        ({"video_codec": "none"}, 65_536),
+        ({"video_codec": "none", "audio_frames_per_group": 200}, 136_533),
+        ({**NO_AUDIO, "video_kbps": 6000}, 3_000_000),
+    ],
+)
+def test_fetch_history(changes, size):
+    f = {**_request()["fields"], **changes}
+    assert adapter._fetch_history(f) == size
 
 
 def test_fractional_rate_cadence():
