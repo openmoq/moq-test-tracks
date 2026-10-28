@@ -41,4 +41,4 @@ Refused in check mode, or not yet conformant, until aiomoqt supports them:
 | `request.json` | optional native contract support (no adapter needed) |
 | on-demand prefix serving | `--serve-prefix` (draft §Publisher Behavior, on demand) |
 | FETCH of media tracks is refused (NOT_SUPPORTED); only the catalog answers | `--fetch-history BYTES` (draft §Publisher Behavior) |
-| a GOAWAY's New Session URI is followed to any host, off the relay allowlist | follow same-host URIs only |
+| a GOAWAY's New Session URI is followed to any host, off the relay allowlist | an allowlist for GOAWAY URIs (aiomoqt 0.15.0 or later) |
