@@ -29,6 +29,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Changed
 
+- Grafana no longer tries to install its preinstalled plugins or fetch plugin signing keys from grafana.com, which it cannot reach. `deploy/.env.example` and the `deploy.sh` usage name moq-test.
 - Grafana opens on one overview: host load gauges (CPU, memory, disk, load, network) linking to the Platform dashboard, then the service: jobs sending and idle (paused by the relay), the caps, objects sent per second, restarts and drops, a table of the active jobs, and per-job send rates and encode bitrate. It is Grafana's home and the dashboard's Metrics link. The runner's `/metrics` adds `mtt_job_info` (state, tool), `mtt_job_objects_per_second` and `mtt_job_dropped_total` per track, and its per-job label is `job_id` (was `job`, which Prometheus reserves).
 - MSF catalogs give every track a `targetLatency` of 250 ms, as the draft now fixes; the aiomoqt adapter passes `--target-latency 250`.
 - Job caps: 16 jobs in total, per key and for aiomoqt (were 6, 2 and 6). Live encodes stay capped at 2.
