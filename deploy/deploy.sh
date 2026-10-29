@@ -3,7 +3,7 @@
 # project. Secrets are generated on the host on first deploy and kept across
 # deploys; named volumes keep keys and the source cache.
 #
-#   deploy/deploy.sh <ssh-host> [remote-dir]     e.g. deploy/deploy.sh moqx-001
+#   deploy/deploy.sh <ssh-host> [remote-dir]     e.g. deploy/deploy.sh moq-test
 set -euo pipefail
 
 host=${1:?usage: deploy/deploy.sh <ssh-host> [remote-dir]}
