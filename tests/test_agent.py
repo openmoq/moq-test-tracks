@@ -157,6 +157,7 @@ def test_metrics(client):
     assert f'mtt_job_info{{{labels},state="running",tool="fake"}} 1' in text
     assert f'mtt_job_dropped_total{{{labels},track="video"}} 1' in text
     assert f'mtt_job_kbps{{{labels},track="video"}} 200' in text
+    assert f'mtt_job_forwarding{{{labels},track="video"}} 1' in text
     client.post("/stop-all", headers=AUTH)
 
 
@@ -168,6 +169,8 @@ def test_metrics(client):
         ({"t": 1, "tracks": {"video": {"objects": 30}}}, {"t": 3, "tracks": {"video": {"objects": 29}}}, {"video": 0.0}),
         ({"t": 9, "tracks": {"video": {"objects": 30}}}, {"t": 1, "tracks": {"video": {"objects": 5}}}, {}),
         ({"t": 1, "tracks": {}}, {"t": 3, "tracks": {"video": {"objects": 90}}}, {}),
+        ({"t": 1, "tracks": {"video": {"objects": 30}}}, {"t": 3, "tracks": {"video": {"objects": 90, "forwarding": 0}}}, {"video": 0.0}),
+        ({"t": 1, "tracks": {"video": {"objects": 30}}}, {"t": 3, "tracks": {"video": {"objects": 90, "forwarding": 2}}}, {"video": 30.0}),
     ],
 )  # fmt: skip
 def test_send_rates(prev, cur, rates):
