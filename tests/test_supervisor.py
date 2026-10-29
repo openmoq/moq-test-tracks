@@ -61,7 +61,7 @@ FAKE_ADAPTER = textwrap.dedent(
     print("plain log line", flush=True)
     t, n = 0.0, 0
     while not stop:
-        video = {{"objects": n, "kbps": 200, "dropped": 1}}
+        video = {{"objects": n, "kbps": 200, "dropped": 1, "forwarding": 1}}
         print("@mtt " + json.dumps({{"event": "stats", "t": t, "tracks": {{"video": video}}}}), flush=True)
         time.sleep(0.05)
         t, n = t + 0.05, n + 1

@@ -44,5 +44,3 @@ aiomoqt supports them:
 | on-demand prefix serving | `--serve-prefix` (draft §Publisher Behavior, on demand) |
 | a GOAWAY's New Session URI is followed to any host, off the relay allowlist | an allowlist for GOAWAY URIs (aiomoqt 0.15.0 or later) |
 | on a GOAWAY to the same address the old session stays open until the redial succeeds, so the relay drains for its full timeout (about 7 s without media) | close the old session on a same-address GOAWAY |
-| after a reconnect the lost session's catalog emitter stays pending; garbage collection later logs "Task was destroyed but it is pending!" (harmless) | cancel a lost session's catalog emitter |
-| with `--fetch-history`, frames produced while paused count in the stats `objects` and `kbps`, so the stats cannot tell a paused track from a sending one | a per-track `forwarding` count in the stats |

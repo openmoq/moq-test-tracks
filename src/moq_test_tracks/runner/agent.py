@@ -324,7 +324,7 @@ class Registry:
 
     def metrics(self) -> str:
         """Prometheus text exposition: job counts against the caps, and per-job state, restarts,
-        bitrate, send rate and drops."""
+        bitrate, send rate, forwarding peers and drops."""
         out: list[str] = []
 
         def metric(name: str, kind: str, doc: str, samples: list[tuple[dict, float]]) -> None:
@@ -348,7 +348,7 @@ class Registry:
                 for e in active])  # fmt: skip
         metric("mtt_job_restarts_total", "counter", "Restarts after losing every relay.",
                [(_job_labels(e), e.restarts) for e in active])  # fmt: skip
-        kbps, dropped, rates = [], [], []
+        kbps, dropped, forwarding, rates = [], [], [], []
         for e in active:
             labels = _job_labels(e)
             for track, stats in ((e.last_stats or {}).get("tracks") or {}).items():
@@ -358,6 +358,8 @@ class Registry:
                     kbps.append(({**labels, "track": track}, stats["kbps"]))
                 if isinstance(stats.get("dropped"), int | float):
                     dropped.append(({**labels, "track": track}, stats["dropped"]))
+                if isinstance(stats.get("forwarding"), int | float):
+                    forwarding.append(({**labels, "track": track}, stats["forwarding"]))
             rates += [({**labels, "track": t}, round(r, 2)) for t, r in e.send_rates.items()]
         metric(
             "mtt_job_kbps",
@@ -371,6 +373,12 @@ class Registry:
             "Objects sent per second per track between the tool's last two stats; 0 while paused.",
             rates,
         )
+        metric(
+            "mtt_job_forwarding",
+            "gauge",
+            "Peers taking objects per track (Forward State 1), from the tool's last stats.",
+            forwarding,
+        )
         metric("mtt_job_dropped_total", "counter", "Objects the tool dropped per track.", dropped)
         return "\n".join(out) + "\n"
 
@@ -382,7 +390,8 @@ class Registry:
 
 def _send_rates(prev: dict | None, cur: dict) -> dict[str, float]:
     """Objects sent per second per track between two stats events; a count that steps back
-    gives 0, and a clock that does not advance (tool restarted) gives no rates."""
+    or a track with no peer forwarding gives 0, and a clock that does not advance (tool
+    restarted) gives no rates."""
     if not prev:
         return {}
     t0, t1 = prev.get("t"), cur.get("t")
@@ -393,7 +402,9 @@ def _send_rates(prev: dict | None, cur: dict) -> dict[str, float]:
         was = before.get(track)
         if isinstance(stats, dict) and isinstance(was, dict):
             n0, n1 = was.get("objects"), stats.get("objects")
-            if isinstance(n0, int | float) and isinstance(n1, int | float):
+            if stats.get("forwarding") == 0:
+                rates[track] = 0.0
+            elif isinstance(n0, int | float) and isinstance(n1, int | float):
                 rates[track] = max(n1 - n0, 0) / (t1 - t0)
     return rates
 
