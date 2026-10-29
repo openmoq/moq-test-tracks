@@ -14,6 +14,7 @@ import secrets
 import signal
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -378,10 +379,19 @@ def cmd_keys(args: argparse.Namespace) -> int:
         print(key)
         print("Store this key now; it cannot be shown again.", file=sys.stderr)
     elif args.keys_command == "list":
+        now = time.time()
         for k in auth.list_keys(db):
-            status = "revoked" if k["revoked"] else "active"
+            if k["revoked"]:
+                status = "revoked"
+            elif k["expires"] is not None and k["expires"] < now:
+                status = "expired"
+            else:
+                status = "active"
             limits = "unrestricted" if k["unrestricted"] else "per-key"
-            print(f"{k['id']}  {k['role']:5}  {status:7}  {limits:12}  {k['name']}")
+            expires = "never"
+            if k["expires"] is not None:
+                expires = time.strftime("%Y-%m-%d %H:%M", time.gmtime(k["expires"]))
+            print(f"{k['id']}  {k['role']:5}  {status:7}  {limits:12}  {expires:16}  {k['name']}")
     elif args.keys_command == "revoke":
         if not auth.revoke(db, args.key_id):
             return _fail([f"no active key {args.key_id}"])

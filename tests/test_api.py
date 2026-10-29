@@ -16,6 +16,7 @@ from moq_test_tracks import config
 from moq_test_tracks.api import auth, presets
 from moq_test_tracks.api.app import Settings, create_app
 from moq_test_tracks.api.db import Db
+from moq_test_tracks.cli import main
 
 ROOT = Path(__file__).resolve().parents[1]
 ORIGIN = "https://mtt.test"
@@ -152,6 +153,19 @@ def test_keys(tmp_path):
     for days in (None, 31):
         with pytest.raises(ValueError, match="within 30 days"):
             auth.new_key(db, "dave", "run", expires_days=days, unrestricted=True)
+
+
+def test_cli_keys_list(tmp_path, capsys):
+    path = tmp_path / "k.sqlite"
+    db = Db(path)
+    auth.new_key(db, "alice", "run")
+    auth.new_key(db, "bob", "view", expires_days=-1)
+    auth.revoke(db, auth.parse(auth.new_key(db, "carol", "run", expires_days=7))[0])
+    assert main(["keys", "--db", str(path), "list"]) == 0
+    rows = {line.split()[-1]: line.split() for line in capsys.readouterr().out.splitlines()}
+    assert rows["alice"][2] == "active" and "never" in rows["alice"]
+    assert rows["bob"][2] == "expired"
+    assert rows["carol"][2] == "revoked"
 
 
 def test_keys_table_gains_unrestricted(tmp_path):
