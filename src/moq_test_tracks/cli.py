@@ -390,8 +390,8 @@ def cmd_keys(args: argparse.Namespace) -> int:
             limits = "unrestricted" if k["unrestricted"] else "per-key"
             expires = "never"
             if k["expires"] is not None:
-                expires = time.strftime("%Y-%m-%d %H:%M", time.gmtime(k["expires"]))
-            print(f"{k['id']}  {k['role']:5}  {status:7}  {limits:12}  {expires:16}  {k['name']}")
+                expires = time.strftime("%Y-%m-%d %H:%MZ", time.gmtime(k["expires"]))
+            print(f"{k['id']}  {k['role']:5}  {status:7}  {limits:12}  {expires:17}  {k['name']}")
     elif args.keys_command == "revoke":
         if not auth.revoke(db, args.key_id):
             return _fail([f"no active key {args.key_id}"])
