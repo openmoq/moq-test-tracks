@@ -43,4 +43,4 @@ aiomoqt supports them:
 | `request.json` | optional native contract support (no adapter needed) |
 | on-demand prefix serving | `--serve-prefix` (draft §Publisher Behavior, on demand) |
 | a GOAWAY's New Session URI is followed to any host, off the relay allowlist | an allowlist for GOAWAY URIs (aiomoqt 0.15.0 or later) |
-| on a GOAWAY to the same address the old session stays open until the redial succeeds, so the relay drains for its full timeout (about 7 s without media) | close the old session on a same-address GOAWAY |
+| on a GOAWAY to the same address the old session stays open until the redial succeeds, so the relay drains for its full timeout | close the old session on a same-address GOAWAY |
