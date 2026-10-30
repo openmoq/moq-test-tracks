@@ -113,7 +113,10 @@ def test_preset_fallbacks():
     assert presets.resolve({"ac": "opus"}).audio_kbps == 64
     audio = presets.resolve({}, "audio")
     assert not audio.has_video and audio.video_height is None
-    assert presets.resolve({"h": "360", "vbr": "900"}).video_kbps == 900
+    assert presets.resolve({"adel": "dgram"}).audio_datagram
+    assert presets.resolve({"vt": "alt3", "h": "1080"}).ladder() == (1080, 720, 540)
+    with pytest.raises(presets.PresetError, match="vbr: video bitrate follows"):
+        presets.resolve({"h": "360", "vbr": "900"})
     cmaf = presets.resolve({}, "cmaf")
     assert (cmaf.catalog, cmaf.packaging, cmaf.init_data) == ("msf", "cmaf", "catalog")
     assert presets.resolve({"init": "object"}).init_data == "object"
@@ -220,11 +223,16 @@ def test_public_endpoints(client):
     r = client.get("/api/v1/namespace", params={"preset": "360p"})
     assert r.status_code == 200
     assert r.json()["namespace"].startswith(
-        "openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/catalog/h264/360/"
+        "openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/loc/h264/360/"
     )
+    assert client.get("/api/v1/namespace", params={"vbr": "900"}).status_code == 422
     assert client.get("/api/v1/namespace", params={"h": "700"}).status_code == 422
     decoded = client.get("/api/v1/namespace/decode", params={"ns": r.json()["namespace"]})
     assert decoded.json()["fields"]["video_height"] == 360
+    assert decoded.json()["video_kbps"] == 600 and decoded.json()["audio_kbps"] == 128
+    full = r.json()["namespace"] + "/catalog/2000/1/0/1"
+    shortened = client.get("/api/v1/namespace/decode", params={"ns": full}).json()["namespace"]
+    assert shortened == r.json()["namespace"]
     assert "1080p60" in client.get("/api/v1/presets").json()["presets"]
     page = client.get("/")
     assert page.status_code == 200 and "moq-test-tracks" in page.text
@@ -273,16 +281,16 @@ def test_roles(client, keys, stub):
 
 def test_query_parameters_and_check(client, keys, stub):
     r = client.post(
-        "/api/v1/jobs/check?h=1080&fps=60&ac=opus&afwd=3&relay=moqx-main",
+        "/api/v1/jobs/check?h=1080&fps=60&ac=opus&adel=dgram&relay=moqx-main",
         headers=bearer(keys["run"]),
     )
     assert r.status_code == 200
     ns = r.json()["plan"][1]
-    assert "/h264/1080/60/6750/2000/0/opus/2/64/1/3/" in ns
+    assert ns.endswith("_00/clock/msf/loc/h264/1080/60/opus/2/catalog/2000/dgram")
 
 
 def test_namespace_prefix_is_enforced(client, keys):
-    ns = "elsewhere/x/moq_test_tracks_00/msf/loc/catalog/h264/360/30/600/2000/0/aac/2/128/1/0/clock/0"
+    ns = "elsewhere/x/moq_test_tracks_00/clock/msf/loc/h264/360/30/aac/2"
     r = client.post("/api/v1/jobs", json={"namespace": ns}, headers=bearer(keys["run"]))
     assert r.status_code == 422 and "prefix must be openmoq/mtt/aiomoqt" in r.text
     ok = ns.replace("elsewhere/x", "openmoq/mtt/aiomoqt")
@@ -297,9 +305,7 @@ def test_clip_namespaces(client, keys):
     r = client.get("/api/v1/namespace", params={"clip": "nasa_tv", "h": "720"}, headers=run)
     assert r.status_code == 200
     ns = r.json()["namespace"]
-    assert ns.startswith("openmoq/mtt/aiomoqt/nasa_tv/moq_test_tracks_00/") and ns.endswith(
-        "/clip/0"
-    )
+    assert ns.startswith("openmoq/mtt/aiomoqt/nasa_tv/moq_test_tracks_00/clip/")
     assert client.post("/api/v1/jobs", json={"namespace": ns}, headers=run).status_code == 201
     assert client.post("/api/v1/jobs", json={"clip": "nasa_tv"}, headers=run).status_code == 201
     for bad, text in (
@@ -307,7 +313,7 @@ def test_clip_namespaces(client, keys):
         ({"params": {"content": "clip"}}, "needs clip=<id>"),
         ({"clip": "nasa_tv", "params": {"content": "bars"}}, "needs content clip"),
         ({"namespace": ns.replace("/nasa_tv/", "/bogus/")}, "unknown clip bogus"),
-        ({"namespace": ns.replace("/clip/0", "/bars/0")}, "prefix must be openmoq/mtt/aiomoqt"),
+        ({"namespace": ns.replace("_00/clip/", "_00/bars/")}, "prefix must be openmoq/mtt/aiomoqt"),
         ({"namespace": ns.replace("nasa_tv/", "")}, "/<clip id>"),
     ):
         r = client.post("/api/v1/jobs", json=bad, headers=run)

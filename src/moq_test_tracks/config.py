@@ -17,9 +17,9 @@ from pathlib import Path
 
 import yaml
 
-from .spec.fields import DATAGRAM, TrackSpec
+from .spec.fields import TrackSpec
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2
 MODES = ("namespace", "publish")
 CLIP_ID = re.compile(r"[a-z0-9_]+")
 ATTRIBUTION = re.compile(r"[\w .()&/|©-]{1,80}")  # drawn verbatim by ffmpeg drawtext
@@ -231,7 +231,7 @@ def job_errors(
     for key, value in (("mode", mode), ("transport", transport), ("draft", draft)):
         if key in caps and value not in caps[key]:
             errors.append(f"{tool.id} does not support {key} {value}")
-    if spec.audio_forwarding == DATAGRAM and transport not in caps.get(
+    if spec.audio_datagram and transport not in caps.get(
         "datagram_transport", caps.get("transport", [transport])
     ):
         errors.append(f"{tool.id} does not send datagrams over {transport}")

@@ -12,24 +12,25 @@ from ..spec.namespace import Namespace, render
 
 
 def fields_dict(spec: TrackSpec) -> dict:
+    """Tuple fields, with omitted ones filled in, plus the values the draft derives."""
     return {
+        "content": spec.content,
         "catalog": spec.catalog,
         "packaging": spec.packaging,
-        "init_data": spec.init_data,
         "video_codec": spec.video_codec,
         "video_height": spec.video_height,
         "video_width": spec.video_width,
         "frame_rate": spec.frame_rate,
         "video_kbps": spec.video_kbps,
-        "group_ms": spec.group_ms,
-        "video_forwarding": spec.video_forwarding,
         "audio_codec": spec.audio_codec,
         "audio_channels": spec.audio_channels,
         "audio_kbps": spec.audio_kbps,
+        "init_data": spec.init_data,
+        "group_ms": spec.group_ms,
+        "audio_delivery": spec.audio_delivery,
         "audio_frames_per_group": spec.audio_frames_per_group,
-        "audio_forwarding": spec.audio_forwarding,
-        "content": spec.content,
         "duration_s": spec.duration_s,
+        "video_tracks": spec.video_tracks,
     }
 
 

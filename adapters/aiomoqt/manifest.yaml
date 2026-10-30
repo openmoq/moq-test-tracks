@@ -1,5 +1,5 @@
 # Contract: docs/tool-contract.md#manifest
-contract_version: 1
+contract_version: 2
 id: aiomoqt
 name: aiomoqt pub_media
 repository: https://github.com/gmarzot/aiomoqt
@@ -15,8 +15,8 @@ capabilities:
   packaging: [loc, cmaf, locmaf]
   video_codec: [h264, h264cb, h265, av1, none]
   audio_codec: [aac, opus, none]
-  video_forwarding: [0, 1]
-  audio_forwarding: [0, 1, 3]
+  audio_delivery_mode: [stream, dgram]
+  video_tracks: ["1"]
   transport: [moqt, webtransport]
   datagram_transport: [moqt, webtransport]
   draft: [14, 16, 18, 20, 22]

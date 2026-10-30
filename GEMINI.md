@@ -19,7 +19,7 @@
 
 2. **Namespace Codec & Tool Contract Compliance (`src/moq_test_tracks/spec/**`, `adapters/**`)**:
    - `src/moq_test_tracks/spec/` must remain a pure module with zero external service dependencies so external tools and probes can import it directly.
-   - All 17 characteristic fields of `moq_test_tracks_00` must be explicit on the wire (no implicit defaults in the encoded namespace). Codec changes must preserve encode/decode round-trip invariants and include property/round-trip tests in `tests/`.
+   - `moq_test_tracks_00` fields 1-8 are required; fields 9-13 may be left off the end and take the values the draft gives them when omitted. The service must encode and publish the shortest form, and decode every valid length to the same spec. Codec changes must preserve encode/decode round-trip invariants and include property/round-trip tests in `tests/`.
    - Tool adapters (`adapters/<tool>/`) must adhere to `docs/tool-contract.md` (`manifest.yaml`, `request.json`, status reporting, and exit code `64` for unsupported shapes).
 
 3. **Repository Conventions (`CONTRIBUTING.md`)**:

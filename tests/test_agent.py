@@ -20,7 +20,7 @@ from moq_test_tracks.runner.agent import create_app, sweep_orphans
 
 TOKEN = "t0ken"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
-NS = "openmoq/mtt/fake/moq_test_tracks_00/msf/loc/catalog/h264/180/30/200/1000/0/aac/2/64/1/0/clock/0"
+NS = "openmoq/mtt/fake/moq_test_tracks_00/clock/msf/loc/h264/180/30/aac/2/catalog/1000"
 
 
 @pytest.fixture
@@ -50,7 +50,7 @@ def root(tmp_path):
     adapter = tmp_path / "adapters" / "fake"
     adapter.mkdir(parents=True)
     (adapter / "manifest.yaml").write_text(
-        "contract_version: 1\nid: fake\nsources: [mpegts, mp4]\nstop: {signal: SIGINT, grace_s: 1}\n"
+        "contract_version: 2\nid: fake\nsources: [mpegts, mp4]\nstop: {signal: SIGINT, grace_s: 1}\n"
     )
     (adapter / "run").write_text(FAKE_ADAPTER)
     (adapter / "run").chmod(0o755)
@@ -256,7 +256,7 @@ def test_rejections(client, body, text):
     assert any(text in e for e in r.json()["detail"]["errors"])
 
 
-CLIP_NS = NS.replace("/fake/", "/fake/demo/").replace("/clock/0", "/clip/0")
+CLIP_NS = NS.replace("/fake/", "/fake/demo/").replace("_00/clock/", "_00/clip/")
 
 
 def test_clip_jobs(client, root):

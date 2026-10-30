@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 
 from ..config import Config
-from ..spec.fields import NamespaceError
+from ..spec.fields import NamespaceError, TrackSpec
 from ..spec.namespace import decode, encode, from_text, render, to_slash
 from . import auth, presets
 from .auth import LoginLimiter, Principal, Sessions
@@ -168,15 +168,16 @@ def create_app(
                 raise HTTPException(422, {"errors": ["expected a JSON object"]})
         query = dict(request.query_params)
         params = {
-            **{k: v for k, v in query.items() if k in presets.PARAMS},
+            **{k: v for k, v in query.items() if k in presets.PARAMS or k in presets.REMOVED},
             **data.get("params", {}),
         }
         tool = data.get("tool") or query.get("tool") or "aiomoqt"
         ns_text = data.get("namespace") or query.get("ns")
         try:
             if ns_text:
-                namespace = from_text(ns_text)
-                check_prefix(decode(namespace), tool)
+                decoded = decode(from_text(ns_text))
+                check_prefix(decoded, tool)
+                namespace = encode(decoded.spec, decoded.prefix)  # the shortest form
             else:
                 preset = data.get("preset") or query.get("preset")
                 clip = data.get("clip") or query.get("clip") or None
@@ -287,7 +288,7 @@ def create_app(
     @app.get("/api/v1/namespace")
     async def namespace(request: Request) -> dict:
         query = dict(request.query_params)
-        params = {k: v for k, v in query.items() if k in presets.PARAMS}
+        params = {k: v for k, v in query.items() if k in presets.PARAMS or k in presets.REMOVED}
         tool = query.get("tool", "aiomoqt")
         try:
             ns, spec = resolve_namespace(
@@ -308,7 +309,13 @@ def create_app(
         except (ValueError, NamespaceError) as e:
             raise HTTPException(422, {"errors": _errors(e)}) from None
         fields = {k: getattr(decoded.spec, k) for k in decoded.spec.__dataclass_fields__}
-        return {"protocol": decoded.protocol, "fields": fields}
+        out = {"protocol": decoded.protocol, "fields": fields}
+        if isinstance(decoded.spec, TrackSpec):
+            out["namespace"] = to_slash(encode(decoded.spec, decoded.prefix))  # the shortest form
+            out["tracks"] = list(decoded.spec.tracks)
+            out["video_kbps"] = decoded.spec.video_kbps
+            out["audio_kbps"] = decoded.spec.audio_kbps
+        return out
 
     @app.get("/api/v1/tools")
     async def tools(p: Principal = as_view) -> list[dict]:
