@@ -1,4 +1,4 @@
-# Relay allowlist. Jobs name a relay by id; custom URLs need the admin scope.
+# Relay allowlist. Jobs name a relay by id.
 default: moqx-main
 
 relays:
@@ -15,4 +15,11 @@ relays:
       moqt: moqt://aiomoqt-relay.marzresearch.net:4443
       webtransport: https://aiomoqt-relay.marzresearch.net:4443/
     drafts: [14, 16, 18, 20, 22]
+    default_draft: 18
+  us-ord-3:
+    name: moqx us-ord-3
+    endpoints:
+      moqt: moqt://us-ord-3.moqx.akaleapi.net:443
+      webtransport: https://us-ord-3.moqx.akaleapi.net:443/moq-relay
+    drafts: [16, 18]
     default_draft: 18
