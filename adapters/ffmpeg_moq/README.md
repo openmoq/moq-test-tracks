@@ -22,7 +22,7 @@ enabled in `config/tools.yaml` until they are settled.
 | `namespace` | `-moq_namespace` joined with `-` (fields contain no `-`) |
 | `tracks` | `-moq_video_track video -moq_audio_track audio` (the defaults) |
 | packaging | `-moq_packaging loc\|cmaf` |
-| audio frames per group | `-moq_audio_fragment_frames N` (always passed; the default is one second) |
+| audio delivery `N` (frames per group) | `-moq_audio_fragment_frames N` (always passed; the default is one second) |
 | `ttl_s`, `duration_s` | `-t` = `duration_s` if > 0, else `ttl_s` |
 | status | `-progress pipe:1`, translated to `@mtt` events |
 
@@ -33,7 +33,7 @@ enabled in `config/tools.yaml` until they are settled.
 | `namespace` mode: libmoq's sender can announce without PUBLISH, but the muxer sets `publish_tracks = 1` | muxer option | moqenc (Santiago Ferreiro, Joaquin Bartaburu) |
 | Capture time falls back to `av_gettime()` at write time when packets carry no `prft` side data | muxer | moqenc |
 | LOC properties are the LOC-01 profile; G5 reads LOC-04 Timestamp `0x10` | libmoq | moq5 (Raymond Lucke) |
-| No datagram path in the media sender (audio forwarding 3) | libmoq | moq5 |
+| No datagram path in the media sender (audio delivery `dgram`) | libmoq | moq5 |
 | Confirm one subgroup per group, and that PUBLISH carries FORWARD 1 (or omits it) and honours the relay's REQUEST_UPDATE | libmoq | moq5 |
 | No timestamp mapping (TIMESCALE, TIMESTAMP_MAPPING) | libmoq | moq5 |
 | No catalog-less mode (`none`) | libmoq | moq5 |

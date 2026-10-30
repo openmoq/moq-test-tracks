@@ -16,9 +16,12 @@ content). The service encodes and publishes matching media to a relay with
 the publisher tool of your choice.
 
 ```
-openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/catalog/h264/720/30/2500/2000/0/aac/2/128/1/0/clock/0
-└──── prefix ─────┘ └──── version ───┘ └─────────────── characteristic fields 1–16 ────────────────┘
+openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/loc/h264/720/30/aac/2
+└──── prefix ─────┘ └──── version ───┘ └─── required fields 1–8 ──────┘
 ```
+
+Optional fields 9 to 13 (init data, group duration, audio delivery, duration,
+video tracks) follow when they differ from the values the draft gives them.
 
 > **Status: in testing** at <https://moq-test.ci.openmoq.org>. Access is by
 > API key; see [Getting started](#getting-started). The architecture, security
