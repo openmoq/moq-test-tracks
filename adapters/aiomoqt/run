@@ -39,15 +39,13 @@ def plan(req, python=sys.executable):
 
     packaging = f["packaging"]
     has_audio = f["audio_codec"] != "none"
-    if f["video_forwarding"] == 1 and packaging == "locmaf":
-        refuse("video_forwarding", "LOCMAF has one subgroup per group")
     if f["content"] == "clip" and not req.get("clip"):
         refuse("content", "clip content needs the request's clip")
-    if has_audio and f["audio_forwarding"] == 1 and packaging == "locmaf":
-        refuse("audio_forwarding", "LOCMAF has one subgroup per group")
+    if f["video_tracks"] not in (None, "1"):
+        refuse("video_tracks", "pub_media publishes one video track")
     endpoints = req["endpoints"]
-    if f["audio_forwarding"] == 3 and packaging != "loc":
-        refuse("audio_forwarding", "datagram audio is LOC only")
+    if f["audio_delivery"] == "dgram" and packaging != "loc":
+        refuse("audio_delivery", "datagram audio is LOC only")
     if len({e["draft"] for e in endpoints}) != 1:
         refuse("endpoints", "all endpoints must use the same draft")
     if req["tls"].get("ca_file"):
@@ -79,15 +77,11 @@ def plan(req, python=sys.executable):
         argv += ["--target-latency", str(TARGET_LATENCY_MS)]
         if packaging == "loc":
             argv += ["--init-data", f["init_data"]]
-    if f["video_forwarding"] == 1:
-        argv += ["--video-subgroups", "object"]
     if not has_audio:
         argv.append("--no-audio")
     else:
         argv += ["--audio-frames-per-group", str(f["audio_frames_per_group"])]
-        if f["audio_forwarding"] == 1:
-            argv += ["--audio-subgroups", "object"]
-        elif f["audio_forwarding"] == 3:
+        if f["audio_delivery"] == "dgram":
             argv.append("-D")
     notes = []
     if f["catalog"] == "none":

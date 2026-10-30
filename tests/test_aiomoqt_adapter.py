@@ -21,7 +21,7 @@ from moq_test_tracks.runner.request import build
 from moq_test_tracks.spec import decode, from_slash
 
 ADAPTER = Path(__file__).resolve().parents[1] / "adapters" / "aiomoqt" / "run"
-NS = "openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/catalog/h264/360/30/600/2000/0/aac/2/128/1/0/clock/0"
+NS = "openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/loc/h264/360/30/aac/2"
 RELAY = Relay(
     "r", "r", {"moqt": "moqt://relay:4433", "webtransport": "https://relay:4433/moq"}, (18,), 18
 )
@@ -31,13 +31,7 @@ _spec = importlib.util.spec_from_loader(_loader.name, _loader)
 adapter = importlib.util.module_from_spec(_spec)
 _loader.exec_module(adapter)
 
-NO_AUDIO = dict(
-    audio_codec="none",
-    audio_channels=None,
-    audio_kbps=None,
-    audio_frames_per_group=None,
-    audio_forwarding=None,
-)
+NO_AUDIO = dict(audio_codec="none", audio_channels=None, audio_delivery=None)
 
 
 def _request(mode="publish", transport="moqt", ttl=30, **changes):
@@ -104,7 +98,7 @@ def test_cmaf_leaves_init_data_to_the_catalog():
 
 
 def test_datagram_audio_over_webtransport():
-    p = adapter.plan(_request(transport="webtransport", audio_forwarding=3))
+    p = adapter.plan(_request(transport="webtransport", audio_delivery="dgram"))
     assert p["accept"] and "-D" in p["argv"] and p["argv"][4] == "https://relay:4433/moq"
 
 
@@ -116,12 +110,10 @@ def test_datagram_audio_over_webtransport():
         ({"video_codec": "av1"}, "mp4", ["--packaging", "loc"]),
         ({"video_codec": "h265"}, "mp4", ["--packaging", "loc"]),
         ({"video_codec": "h264cb"}, "mpegts", ["--ts", "<source>"]),
-        ({"audio_codec": "opus", "audio_kbps": 64}, "mpegts", ["--ts", "<source>"]),
-        ({"video_forwarding": 1}, "mpegts", ["--video-subgroups", "object"]),
-        ({"audio_frames_per_group": 10}, "mpegts", ["--audio-frames-per-group", "10"]),
-        ({"audio_forwarding": 1}, "mpegts", ["--audio-subgroups", "object"]),
+        ({"audio_codec": "opus"}, "mpegts", ["--ts", "<source>"]),
+        ({"audio_delivery": 10}, "mpegts", ["--audio-frames-per-group", "10"]),
         (NO_AUDIO, "mpegts", ["--no-audio"]),
-        ({"audio_forwarding": 3}, "mpegts", ["-D"]),
+        ({"audio_delivery": "dgram"}, "mpegts", ["--audio-frames-per-group", "1", "-D"]),
         ({"init_data": "track"}, "mpegts", ["--init-data", "track"]),
         ({"init_data": "object"}, "mpegts", ["--init-data", "object"]),
         ({"duration_s": 600}, "mpegts", ["-t", "600"]),
@@ -150,9 +142,9 @@ def test_namespace_mode():
     "kwargs, field",
     [
         ({"content": "clip"}, "content"),
-        ({"packaging": "locmaf", "video_forwarding": 1}, "video_forwarding"),
-        ({"packaging": "locmaf", "audio_forwarding": 1}, "audio_forwarding"),
-        ({"packaging": "cmaf", "audio_forwarding": 3}, "audio_forwarding"),
+        ({"packaging": "cmaf", "audio_delivery": "dgram"}, "audio_delivery"),
+        ({"video_tracks": "view2"}, "video_tracks"),
+        ({"video_height": 1080, "video_tracks": "alt3"}, "video_tracks"),
     ],
 )
 def test_refuses(kwargs, field):

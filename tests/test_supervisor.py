@@ -24,7 +24,7 @@ from moq_test_tracks.runner.supervisor import EXIT_OK, Job, mp4_complete
 from moq_test_tracks.spec import decode, from_slash
 
 ROOT = Path(__file__).resolve().parents[1]
-NS = "openmoq/mtt/fake/moq_test_tracks_00/msf/loc/catalog/h264/180/30/200/1000/0/aac/2/64/1/0/clock/0"
+NS = "openmoq/mtt/fake/moq_test_tracks_00/clock/msf/loc/h264/180/30/aac/2/catalog/1000"
 RELAY = Relay("local", "local", {"moqt": "moqt://127.0.0.1:4433"}, (18,), 18)
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
 
@@ -182,7 +182,7 @@ def test_run_events_and_stop(fake_tool, tmp_path):
     assert "plain log line" in logs
     assert "plain log line" in (job.dir / "log").read_text()
     request = json.loads(job.request_file.read_text())
-    assert request["contract_version"] == 1 and request["mode"] == "publish"
+    assert request["contract_version"] == 2 and request["mode"] == "publish"
 
 
 def test_ttl_expires(fake_tool, tmp_path):
@@ -312,7 +312,7 @@ def test_job_errors(fake_tool):
         fake_tool, capabilities={"video_codec": ["av1"], "mode": ["namespace"], "draft": [16]}
     )
     errors = job_errors(
-        caps, RELAY, dataclasses.replace(spec, video_height=1080, video_kbps=5000),
+        caps, RELAY, dataclasses.replace(spec, video_height=1080),
         mode="publish", transport="webtransport", draft=16, ttl_s=7200, policy=policy,
     )  # fmt: skip
     text = " | ".join(errors)
@@ -322,7 +322,7 @@ def test_job_errors(fake_tool):
         "does not support video_codec h264",
         "does not support mode publish",
         "height 1080 exceeds",
-        "video bitrate 5000 exceeds",
+        "video bitrate 4500 exceeds",
         "ttl 7200",
     ):
         assert expected in text
@@ -330,7 +330,7 @@ def test_job_errors(fake_tool):
         job_errors(
             caps,
             RELAY,
-            dataclasses.replace(spec, video_height=1080, video_kbps=5000),
+            dataclasses.replace(spec, video_height=1080),
             mode="namespace",
             transport="moqt",
             draft=18,

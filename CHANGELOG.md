@@ -30,6 +30,14 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Changed
 
+- **Breaking:** `moq_test_tracks_00` follows the revised draft.
+  - **Field order:** the required fields come first (content, catalog, packaging, video codec, height, frame rate, audio codec, channels). Init data, group duration, audio delivery, duration and the new video tracks field follow, and may be left off the end.
+  - **Shortest form:** the service names every set of tracks in its shortest form, and rewrites longer requests to it.
+  - **Bitrates:** no longer fields. They follow from height and frame rate, and from codec and channels, so 1080p30 clips run at 4500 kbps.
+  - **Forwarding preferences:** gone. Audio delivery is `1`–`100` frames per group, or `dgram`.
+  - **Parameters:** the API and `mtt` refuse `vbr`, `abr`, `vfwd`, `afwd` and `afpg`, and say what replaced each. `adel` and `vt` are new.
+  - **Tool contract:** `request.json` is contract version 2.
+  - **aiomoqt adapter:** it refuses ladders and views (`altN`, `viewN`), which pub_media cannot publish yet.
 - Grafana no longer tries to install its preinstalled plugins or fetch plugin signing keys from grafana.com, which it cannot reach. `deploy/.env.example` and the `deploy.sh` usage name moq-test.
 - Grafana opens on one overview: host load gauges (CPU, memory, disk, load, network) linking to the Platform dashboard, then the service: jobs sending and idle (paused by the relay), the caps, objects sent per second, restarts and drops, a table of the active jobs, and per-job send rates and encode bitrate. It is Grafana's home and the dashboard's Metrics link. The runner's `/metrics` adds `mtt_job_info` (state, tool), `mtt_job_objects_per_second` and `mtt_job_dropped_total` per track, and its per-job label is `job_id` (was `job`, which Prometheus reserves). `mtt_job_forwarding` counts each track's peers taking objects, and a track with none sends 0 objects per second.
 - MSF catalogs give every track a `targetLatency` of 250 ms, as the draft now fixes; the aiomoqt adapter passes `--target-latency 250`.

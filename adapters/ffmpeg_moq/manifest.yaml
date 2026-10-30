@@ -1,5 +1,5 @@
 # Contract: docs/tool-contract.md#manifest
-contract_version: 1
+contract_version: 2
 id: ffmpeg_moq
 name: ffmpeg MoQ muxer (libmoq)
 repository: https://github.com/openmoq/FFmpeg
@@ -15,8 +15,8 @@ capabilities:
   packaging: [loc, cmaf]
   video_codec: [h264, h264cb, h265, av1, none]
   audio_codec: [aac, opus, none]
-  video_forwarding: [0]
-  audio_forwarding: [0]
+  audio_delivery_mode: [stream]
+  video_tracks: ["1"]
   content: [clock, bars, noise, clip]
   transport: [moqt, webtransport]
   draft: [16, 18]

@@ -19,7 +19,10 @@ Namespace = tuple[bytes, ...]
 MAX_NAMESPACE_FIELDS = 32
 MAX_FULL_NAME_BYTES = 4096
 
-_FIELD_COUNTS = {fields.VERSION: len(FIELDS), moq_test.VERSION: len(moq_test.FIELD_NAMES)}
+_FIELD_COUNTS = {
+    fields.VERSION: (fields.REQUIRED, len(FIELDS)),
+    moq_test.VERSION: (len(moq_test.FIELD_NAMES), len(moq_test.FIELD_NAMES)),
+}
 _VERSIONS = {v.encode(): v for v in _FIELD_COUNTS}
 _SAFE = frozenset(b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 _HEX = frozenset("0123456789abcdef")
@@ -80,14 +83,15 @@ def decode(namespace: Sequence[bytes | str]) -> Decoded:
         raise NamespaceError([FieldError(None, "namespace", "no known version field")])
     version = _VERSIONS[ns[at]]
     rest = ns[at + 1 :]
-    if len(rest) != _FIELD_COUNTS[version]:
+    lo, hi = _FIELD_COUNTS[version]
+    if not lo <= len(rest) <= hi:
+        need = str(lo) if lo == hi else f"{lo} to {hi}"
         raise NamespaceError(
             [
                 FieldError(
                     None,
                     "namespace",
-                    f"{version} needs {_FIELD_COUNTS[version]} fields after the version, "
-                    f"got {len(rest)}",
+                    f"{version} needs {need} fields after the version, got {len(rest)}",
                 )
             ]
         )
@@ -103,10 +107,11 @@ def decode(namespace: Sequence[bytes | str]) -> Decoded:
 
 
 def parse_media(tokens: list[str]) -> TrackSpec:
-    """Characteristic fields 1-16 of moq_test_tracks_00 to a validated spec."""
+    """Characteristic fields of moq_test_tracks_00, optional ones omitted from the end, to a
+    validated spec."""
     errors: list[FieldError] = []
     values: dict[str, object] = {}
-    for field, token in zip(FIELDS, tokens, strict=True):
+    for field, token in zip(FIELDS[: len(tokens)], tokens, strict=True):
         if token == NA:
             values[field.name] = None
             continue
@@ -117,6 +122,8 @@ def parse_media(tokens: list[str]) -> TrackSpec:
             values[field.name] = None
     if errors:
         raise NamespaceError(errors)
+    for field in FIELDS[len(tokens) :]:
+        values[field.name] = fields.omitted_value(field, values)
     spec = TrackSpec(**values)  # type: ignore[arg-type]
     errors = fields.check(spec)
     if errors:
@@ -125,13 +132,17 @@ def parse_media(tokens: list[str]) -> TrackSpec:
 
 
 def format_media(spec: TrackSpec) -> list[str]:
+    """The shortest form: trailing fields equal to their omitted value are left off."""
     errors = fields.check(spec)
     if errors:
         raise NamespaceError(errors)
-    out = []
-    for field in FIELDS:
-        value = getattr(spec, field.name)
-        out.append(NA if value is None else str(value))
+    values = {f.name: getattr(spec, f.name) for f in FIELDS}
+    out = [NA if values[f.name] is None else str(values[f.name]) for f in FIELDS]
+    while len(out) > fields.REQUIRED:
+        field = FIELDS[len(out) - 1]
+        if values[field.name] != fields.omitted_value(field, values):
+            break
+        out.pop()
     return out
 
 

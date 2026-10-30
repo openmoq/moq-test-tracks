@@ -29,22 +29,19 @@ from .spec.namespace import decode, encode, from_slash, from_text, render, to_sl
 
 # Option names match the API's query parameters (docs/design.md).
 MEDIA_OPTIONS = {
+    "content": "content",
     "cat": "catalog",
     "pkg": "packaging",
-    "init": "init_data",
     "vc": "video_codec",
     "h": "video_height",
     "fps": "frame_rate",
-    "vbr": "video_kbps",
-    "gop": "group_ms",
-    "vfwd": "video_forwarding",
     "ac": "audio_codec",
     "ch": "audio_channels",
-    "abr": "audio_kbps",
-    "afpg": "audio_frames_per_group",
-    "afwd": "audio_forwarding",
-    "content": "content",
+    "init": "init_data",
+    "gop": "group_ms",
+    "adel": "audio_delivery",
     "dur": "duration_s",
+    "vt": "video_tracks",
 }
 
 
@@ -71,12 +68,14 @@ def _media_tokens(args: argparse.Namespace) -> list[str]:
                     FieldError(field.index, field.name, f"--{opt_of[field.name]} does not apply")
                 )
             tokens.append(NA)
-        elif value is None:
+        elif value is not None:
+            tokens.append(value)
+        elif field.omitted is not None:
+            tokens.append(str(fields.omitted_value(field, given)))
+        else:
             errors.append(
                 FieldError(field.index, field.name, f"--{opt_of[field.name]} is required")
             )
-        else:
-            tokens.append(value)
     if errors:
         raise NamespaceError(errors)
     return tokens
@@ -100,13 +99,20 @@ def _describe(spec: TrackSpec | moq_test.MoqTestParams) -> dict:
             vt = spec.video_timing()
             out["video"] = {
                 "width": spec.video_width,
+                "kbps": spec.video_kbps,
                 "frames_per_group": int(spec.frames_per_group),
                 "timing": vt.__dict__ if vt else None,
             }
+            if spec.is_ladder:
+                out["video"]["ladder"] = [
+                    {"track": t, "height": h, "kbps": spec.kbps_at(h)}
+                    for t, h in zip(spec.video_track_names, spec.ladder(), strict=True)
+                ]
         if spec.has_audio:
             at = spec.audio_timing()
             out["audio"] = {
                 "sample_rate": fields.AUDIO_SAMPLE_RATE,
+                "kbps": spec.audio_kbps,
                 "timing": at.__dict__ if at else None,
             }
     return out

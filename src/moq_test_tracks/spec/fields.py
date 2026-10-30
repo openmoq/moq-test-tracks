@@ -14,9 +14,9 @@ from fractions import Fraction
 VERSION = "moq_test_tracks_00"
 NA = "_"
 
+CONTENTS = ("clock", "bars", "noise", "clip")
 CATALOGS = ("msf", "none")
 PACKAGINGS = ("loc", "cmaf", "locmaf")
-INIT_DATA = ("catalog", "track", "object")
 VIDEO_CODECS = ("h264", "h264cb", "h265", "av1", "none")
 HEIGHTS = (180, 360, 480, 540, 720, 1080, 1440, 2160)
 FRACTIONAL_RATES = {
@@ -25,17 +25,36 @@ FRACTIONAL_RATES = {
     "59_94": Fraction(60000, 1001),
 }
 AUDIO_CODECS = ("aac", "opus", "none")
-CONTENTS = ("clock", "bars", "noise", "clip")
+INIT_DATA = ("catalog", "track", "object")
+DGRAM = "dgram"
+ONE_TRACK = "1"
 
 CATALOG_PACKAGING = {"msf": ("loc", "cmaf", "locmaf"), "none": ("loc",)}
 CATALOG_INIT_PACKAGING = ("cmaf", "locmaf")  # CMSF: CMAF headers go inline in the catalog
 DATAGRAM_PACKAGING = ("loc", "cmaf")
-DATAGRAM = 3
+
+# Draft §Bitrates: video by height, 1.5 times above 30 fps; audio by codec, mono and stereo.
+VIDEO_KBPS = {
+    180: 200,
+    360: 600,
+    480: 1000,
+    540: 1500,
+    720: 2500,
+    1080: 4500,
+    1440: 9000,
+    2160: 16000,
+}
+AUDIO_KBPS = {"aac": (64, 128), "opus": (32, 64)}
+MAX_LADDER = 7
+MAX_VIEWS = 16
 
 AUDIO_SAMPLE_RATE = 48000
 AUDIO_FRAME_SAMPLES = {"aac": 1024, "opus": 960}
 
+REQUIRED = 8  # tuple fields 1-8; fields 9-13 may be omitted from the end
+
 _DECIMAL = re.compile(r"0|[1-9][0-9]*")
+_VIDEO_TRACKS = re.compile(r"(alt|view)([1-9][0-9]*)")
 
 
 @dataclass(frozen=True)
@@ -99,12 +118,37 @@ def _frame_rate(token: str) -> str:
     return token
 
 
+def _audio_delivery(token: str) -> int | str:
+    if token == DGRAM:
+        return token
+    try:
+        return _int_range(1, 100)(token)
+    except ValueError:
+        raise ValueError(f"{token!r} is not 1-100 frames per group or {DGRAM}") from None
+
+
+def _video_tracks(token: str) -> str:
+    if token == ONE_TRACK:
+        return token
+    m = _VIDEO_TRACKS.fullmatch(token)
+    top = {"alt": MAX_LADDER, "view": MAX_VIEWS}[m.group(1)] if m else 0
+    if not m or not 2 <= int(m.group(2)) <= top:
+        raise ValueError(f"{token!r} is not 1, alt2-alt{MAX_LADDER} or view2-view{MAX_VIEWS}")
+    return token
+
+
+def default_group_ms(frame_rate: str) -> int:
+    """Group duration when tuple field 10 is omitted: whole frames nearest 2 s."""
+    return 2002 if frame_rate in FRACTIONAL_RATES else 2000
+
+
 @dataclass(frozen=True)
 class Field:
     index: int
     name: str
     needs: str | None  # "catalog", "video" or "audio": applies only when that track exists
     parse: Callable[[str], object]
+    omitted: Callable[[dict], object] | None = None  # value when left off the end; None: required
 
 
 def applies(field: Field, *, catalog: bool, video: bool, audio: bool) -> bool:
@@ -112,23 +156,32 @@ def applies(field: Field, *, catalog: bool, video: bool, audio: bool) -> bool:
 
 
 FIELDS = (
-    Field(1, "catalog", None, _tokens(CATALOGS)),
-    Field(2, "packaging", None, _tokens(PACKAGINGS)),
-    Field(3, "init_data", "catalog", _tokens(INIT_DATA)),
+    Field(1, "content", None, _tokens(CONTENTS)),
+    Field(2, "catalog", None, _tokens(CATALOGS)),
+    Field(3, "packaging", None, _tokens(PACKAGINGS)),
     Field(4, "video_codec", None, _tokens(VIDEO_CODECS)),
     Field(5, "video_height", "video", _int_choices(HEIGHTS)),
     Field(6, "frame_rate", "video", _frame_rate),
-    Field(7, "video_kbps", "video", _int_range(50, 50000)),
-    Field(8, "group_ms", "video", _int_range(100, 10000)),
-    Field(9, "video_forwarding", "video", _int_choices((0, 1))),
-    Field(10, "audio_codec", None, _tokens(AUDIO_CODECS)),
-    Field(11, "audio_channels", "audio", _int_choices((1, 2))),
-    Field(12, "audio_kbps", "audio", _int_range(8, 512)),
-    Field(13, "audio_frames_per_group", "audio", _int_range(1, 100)),
-    Field(14, "audio_forwarding", "audio", _int_choices((0, 1, DATAGRAM))),
-    Field(15, "content", None, _tokens(CONTENTS)),
-    Field(16, "duration_s", None, _int_range(0, 86400)),
+    Field(7, "audio_codec", None, _tokens(AUDIO_CODECS)),
+    Field(8, "audio_channels", "audio", _int_choices((1, 2))),
+    Field(9, "init_data", "catalog", _tokens(INIT_DATA), lambda v: "catalog"),
+    Field(
+        10, "group_ms", "video", _int_range(100, 10000), lambda v: default_group_ms(v["frame_rate"])
+    ),
+    Field(11, "audio_delivery", "audio", _audio_delivery, lambda v: 1),
+    Field(12, "duration_s", None, _int_range(0, 86400), lambda v: 0),
+    Field(13, "video_tracks", "video", _video_tracks, lambda v: ONE_TRACK),
 )
+
+
+def omitted_value(field: Field, values: dict) -> object:
+    """The value of an optional field left off the end, given the fields before it."""
+    has = {
+        "catalog": values["catalog"] != "none",
+        "video": values["video_codec"] != "none",
+        "audio": values["audio_codec"] != "none",
+    }
+    return field.omitted(values) if field.omitted and applies(field, **has) else None
 
 
 @dataclass(frozen=True)
@@ -142,22 +195,19 @@ class Timing:
 
 @dataclass(frozen=True)
 class TrackSpec:
+    content: str
     catalog: str
     packaging: str
-    init_data: str | None
     video_codec: str
     video_height: int | None
     frame_rate: str | None
-    video_kbps: int | None
-    group_ms: int | None
-    video_forwarding: int | None
     audio_codec: str
     audio_channels: int | None
-    audio_kbps: int | None
-    audio_frames_per_group: int | None
-    audio_forwarding: int | None
-    content: str
+    init_data: str | None
+    group_ms: int | None
+    audio_delivery: int | str | None
     duration_s: int
+    video_tracks: str | None
 
     @property
     def has_catalog(self) -> bool:
@@ -172,13 +222,43 @@ class TrackSpec:
         return self.audio_codec != "none"
 
     @property
+    def video_track_names(self) -> tuple[str, ...]:
+        if not self.has_video:
+            return ()
+        n = (
+            int(self.video_tracks[4 if self.is_views else 3 :])
+            if self.video_tracks != ONE_TRACK
+            else 1
+        )
+        return ("video", *(f"video_{i}" for i in range(1, n)))
+
+    @property
+    def is_ladder(self) -> bool:
+        return bool(self.video_tracks and self.video_tracks.startswith("alt"))
+
+    @property
+    def is_views(self) -> bool:
+        return bool(self.video_tracks and self.video_tracks.startswith("view"))
+
+    @property
     def tracks(self) -> tuple[str, ...]:
         names = ["catalog"] if self.has_catalog else []
-        if self.has_video:
-            names.append("video")
+        names += self.video_track_names
         if self.has_audio:
             names.append("audio")
         return tuple(names)
+
+    def ladder(self) -> tuple[int, ...] | None:
+        """Rendition heights of an altN ladder, or None when it does not fit (draft §Field 13)."""
+        if not self.is_ladder or self.video_height is None:
+            return None
+        heights = [self.video_height]
+        while len(heights) < len(self.video_track_names):
+            lower = [h for h in HEIGHTS if 4 * h <= 3 * heights[-1]]
+            if not lower:
+                return None
+            heights.append(max(lower))
+        return tuple(heights)
 
     @property
     def video_width(self) -> int | None:
@@ -191,6 +271,40 @@ class TrackSpec:
         if self.frame_rate is None:
             return None
         return FRACTIONAL_RATES.get(self.frame_rate, Fraction(self.frame_rate))
+
+    def kbps_at(self, height: int) -> int:
+        kbps = VIDEO_KBPS[height]
+        return kbps * 3 // 2 if self.fps is not None and self.fps > 30 else kbps
+
+    @property
+    def video_kbps(self) -> int | None:
+        """Target bitrate of the "video" track (draft §Bitrates)."""
+        if self.video_height is None:
+            return None
+        return self.kbps_at(self.video_height)
+
+    @property
+    def audio_kbps(self) -> int | None:
+        if not self.has_audio or self.audio_channels is None:
+            return None
+        return AUDIO_KBPS[self.audio_codec][self.audio_channels - 1]
+
+    @property
+    def audio_datagram(self) -> bool:
+        return self.audio_delivery == DGRAM
+
+    @property
+    def audio_delivery_mode(self) -> str | None:
+        """stream or dgram, for tool capabilities."""
+        if self.audio_delivery is None:
+            return None
+        return DGRAM if self.audio_datagram else "stream"
+
+    @property
+    def audio_frames_per_group(self) -> int | None:
+        if self.audio_delivery is None:
+            return None
+        return 1 if self.audio_datagram else int(self.audio_delivery)
 
     @property
     def frames_per_group(self) -> Fraction | None:
@@ -239,26 +353,38 @@ def _cross_checks(spec: TrackSpec) -> list[FieldError]:
     if spec.packaging not in CATALOG_PACKAGING[spec.catalog]:
         allowed = " or ".join(CATALOG_PACKAGING[spec.catalog])
         errors.append(
-            FieldError(2, "packaging", f"catalog {spec.catalog} requires packaging {allowed}")
+            FieldError(3, "packaging", f"catalog {spec.catalog} requires packaging {allowed}")
         )
     if spec.packaging in CATALOG_INIT_PACKAGING and spec.init_data not in (None, "catalog"):
         errors.append(
-            FieldError(3, "init_data", f"{spec.packaging} carries init data in the catalog")
+            FieldError(9, "init_data", f"{spec.packaging} carries init data in the catalog")
         )
     if spec.frames_per_group is not None and spec.frames_per_group.denominator != 1:
         errors.append(
             FieldError(
-                8,
+                10,
                 "group_ms",
                 f"{spec.group_ms} ms is not a whole number of frames at {spec.frame_rate}",
             )
         )
-    if spec.audio_forwarding == DATAGRAM and spec.packaging not in DATAGRAM_PACKAGING:
+    if spec.audio_datagram and spec.packaging not in DATAGRAM_PACKAGING:
         errors.append(
-            FieldError(
-                14, "audio_forwarding", f"datagram requires loc or cmaf, not {spec.packaging}"
-            )
+            FieldError(11, "audio_delivery", f"dgram requires loc or cmaf, not {spec.packaging}")
         )
+    if spec.video_tracks not in (None, ONE_TRACK):
+        if not spec.has_catalog:
+            errors.append(
+                FieldError(13, "video_tracks", f"{spec.video_tracks} requires catalog msf")
+            )
+        elif spec.is_ladder and spec.ladder() is None:
+            errors.append(
+                FieldError(
+                    13,
+                    "video_tracks",
+                    f"{spec.video_tracks} needs more renditions than height {spec.video_height}"
+                    " yields",
+                )
+            )
     return errors
 
 

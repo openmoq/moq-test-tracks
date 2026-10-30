@@ -60,9 +60,8 @@
             <label>Codec <select id="vc"><option value="">default</option><option value="h264">h264 (High)</option><option value="h264cb">h264cb (Constrained Baseline)</option><option>h265</option><option>av1</option><option>none</option></select></label>
             <label>Height <select id="h"><option value="">default</option><option>180</option><option>360</option><option>480</option><option>540</option><option>720</option><option>1080</option><option>1440</option><option>2160</option></select></label>
             <label>Frame rate <input id="fps" placeholder="30, 29_97"></label>
-            <label>kbps <input id="vbr" type="number" placeholder="by height"></label>
             <label>Group ms <input id="gop" type="number" placeholder="2000"></label>
-            <label>Subgroups <select id="vfwd"><option value="">default</option><option value="0">per group</option><option value="1">per object</option></select></label>
+            <label>Tracks <input id="vt" placeholder="1, alt3, view4"></label>
           </div>
         </fieldset>
         <fieldset>
@@ -70,9 +69,7 @@
           <div class="grid">
             <label>Codec <select id="ac"><option value="">default</option><option>aac</option><option>opus</option><option>none</option></select></label>
             <label>Channels <select id="ch"><option value="">default</option><option>1</option><option>2</option></select></label>
-            <label>kbps <input id="abr" type="number" placeholder="by codec"></label>
-            <label>Frames/group <input id="afpg" type="number" min="1" placeholder="1"></label>
-            <label>Delivery <select id="afwd"><option value="">default</option><option value="0">subgroup per group</option><option value="1">subgroup per object</option><option value="3">datagram</option></select></label>
+            <label>Delivery <input id="adel" placeholder="frames/group, or dgram"></label>
           </div>
         </fieldset>
         <div class="ns">

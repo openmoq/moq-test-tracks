@@ -12,7 +12,7 @@ import pytest
 from moq_test_tracks.content.recipes import RecipeError, loop_seconds, source_command
 from moq_test_tracks.spec import decode, from_slash
 
-BASE = "p/moq_test_tracks_00/msf/loc/catalog/h264/720/30/2500/2000/0/aac/2/128/1/0/clock/0"
+BASE = "p/moq_test_tracks_00/clock/msf/loc/h264/720/30/aac/2"
 
 
 def _spec(**changes):
@@ -53,8 +53,9 @@ def test_codecs():
     assert _value(h265, "-c:v") == "libx265" and _value(h265, "-tag:v") == "hvc1"
     av1 = source_command(_spec(video_codec="av1"), "mp4", "o.mp4")
     assert _value(av1, "-c:v") == "libsvtav1"
-    opus = source_command(_spec(audio_codec="opus", audio_kbps=64), "mpegts", "o.ts")
+    opus = source_command(_spec(audio_codec="opus"), "mpegts", "o.ts")
     assert _value(opus, "-c:a") == "libopus" and _value(opus, "-frame_duration") == "20"
+    assert _value(opus, "-b:a") == "64k"  # draft §Bitrates: opus stereo
     assert _value(opus, "-vbr") == "off"  # libopus VBR overshoots tonal content by ~50%
 
 
@@ -75,9 +76,7 @@ def test_mono_and_video_only():
         _spec(
             audio_codec="none",
             audio_channels=None,
-            audio_kbps=None,
-            audio_frames_per_group=None,
-            audio_forwarding=None,
+            audio_delivery=None,
         ),
         "mpegts",
         "o.ts",
