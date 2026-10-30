@@ -43,6 +43,10 @@ At least one approving review is required. Changes under `auth/`, `jobs/`,
 owner ([CODEOWNERS](.github/CODEOWNERS)): they are the service's security
 boundary.
 
+Gemini reviews a PR when it is opened or marked ready for review. To ask
+for another review, add the `gemini-review` label; it is removed when the
+review starts.
+
 ## Branches
 
 - `main` — rolling head; the hosted instance deploys from here.
