@@ -38,11 +38,14 @@ A request has two halves:
 | Track characteristics | the namespace | catalog, packaging, codec, height, fps, audio datagrams, content |
 | Run parameters | the API request only | tool, relay, mode, MoQT draft, transport, TTL |
 
-- **No defaults on the wire.** The namespace always carries all 17 fields
-  explicitly, so each shape has exactly one name. Convenience lives in the
-  API: presets (`preset=720p30`) and per-parameter fallbacks fill in
-  whatever the caller leaves out. The API returns the full namespace it
-  built.
+- **Shortest form.** Fields 1 to 8 are required. Fields 9 to 13 (init
+  data, group duration, audio delivery, duration, video tracks) may be left
+  off the end and then take the value the draft gives them. A longer
+  namespace names the same tracks, but the service always publishes, and
+  returns, the shortest form, as the draft requires of publishers. Required
+  fields have no defaults on the wire; convenience lives in the API: presets
+  (`preset=720p30`) and per-parameter fallbacks fill in whatever the caller
+  leaves out.
 - **Prefix:** `openmoq/mtt/<tool_id>`, plus `/<clip_id>` when the content is
   `clip`. The same shape from two tools gives two comparable namespaces on
   one relay. An optional run field
@@ -131,14 +134,17 @@ Query parameters:
 
 | Param | Draft field | | Param | Draft field |
 |-------|-------|-|-------|-------|
-| `cat` | 1 catalog | | `vfwd` | 9 video forwarding |
-| `pkg` | 2 packaging | | `ac` | 10 audio codec |
-| `init` | 3 init data | | `ch` | 11 channels |
-| `vc` | 4 video codec | | `abr` | 12 audio kbps |
-| `h` | 5 height | | `afpg` | 13 audio frames/group |
-| `fps` | 6 frame rate | | `afwd` | 14 audio forwarding |
-| `vbr` | 7 video kbps | | `content` | 15 content |
-| `gop` | 8 group ms | | `dur` | 16 duration s |
+| `content` | 1 content | | `ch` | 8 channels |
+| `cat` | 2 catalog | | `init` | 9 init data |
+| `pkg` | 3 packaging | | `gop` | 10 group ms |
+| `vc` | 4 video codec | | `adel` | 11 audio delivery |
+| `h` | 5 height | | `dur` | 12 duration s |
+| `fps` | 6 frame rate | | `vt` | 13 video tracks |
+| `ac` | 7 audio codec | | | |
+
+Bitrates follow from height and frame rate, and from codec and channels
+(draft §Bitrates). The parameters `vbr`, `abr`, `vfwd`, `afwd` and `afpg`
+are refused with what replaced them.
 
 - Alternatives to field parameters: `preset=<name>`, or `ns=` with a full
   namespace.
@@ -153,7 +159,7 @@ Example:
 
 ```
 curl -X POST -H "Authorization: Bearer $MTT_KEY" \
-  "https://moq-test.ci.openmoq.org/api/v1/jobs?preset=1080p60&ac=opus&afwd=3&tool=aiomoqt&relay=moqx-main"
+  "https://moq-test.ci.openmoq.org/api/v1/jobs?preset=1080p60&ac=opus&adel=dgram&tool=aiomoqt&relay=moqx-main"
 ```
 
 ## Tools
@@ -256,7 +262,7 @@ exits 69 instead goes `reconnecting → starting → running` again on the same
 namespace, with exponential backoff capped at 30 s, until the TTL ends or 20
 attempts in a row fail.
 
-- Every job has a TTL, even when draft Field 16 is 0. The default and
+- Every job has a TTL, even when draft field 12 is 0. The default and
   maximum come from policy.
 - The runner owns TTLs, and api reconciles with the runner on restart.
 - On start, the runner sweeps up orphaned process groups.
@@ -368,14 +374,13 @@ To raise with reviewers; these become GitHub issues once the repo is public.
 2. **Empty fields in moq-test.** MoQT forbids empty Track Namespace fields
    ("MUST contain at least one byte"), so moq-test-00's blank defaults
    break on current drafts. How should moq-test-01 handle this?
-3. **MSF stream mapping.** MSF §6 says each Object goes on a new stream;
-   most implementations use one subgroup (stream) per group. Fixes under
-   discussion: [#148](https://github.com/moq-wg/msf/issues/148),
-   [#169](https://github.com/moq-wg/msf/pull/169) (subgroup 0) and
-   [#211](https://github.com/moq-wg/msf/pull/211) (catalog `streamMapping`).
-   Tuple fields 9 and 14 exercise both mappings; if `streamMapping` lands,
-   generators set it to match.
-4. **ABR.** How should a namespace express ladders and multiple renditions?
+3. **MSF stream mapping.** Settled by
+   [msf#169](https://github.com/moq-wg/msf/pull/169): each group goes on
+   subgroup 0, so the draft dropped its forwarding fields. A catalog
+   `streamMapping` ([#211](https://github.com/moq-wg/msf/pull/211)) would be
+   set to match if it lands.
+4. **ABR.** The draft's field 13 expresses ladders (`altN`) and views
+   (`viewN`). No tool here publishes more than one video track yet.
 5. **Profile and level.** Should tuple field 4 accept codec strings as well
    as short names? Codec strings contain `.`, which the §8.8 representation
    escapes.

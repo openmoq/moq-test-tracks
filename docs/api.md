@@ -55,7 +55,7 @@ strings never carry a key.
 query parameters. Give either a full namespace or parameters:
 
 ```json
-{"namespace": "openmoq/mtt/aiomoqt/moq_test_tracks_00/msf/loc/catalog/h264/720/30/2500/2000/0/aac/2/128/1/0/clock/0",
+{"namespace": "openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/loc/h264/720/30/aac/2",
  "relay": "moqx-main", "draft": 18, "mode": "publish", "ttl_s": 600}
 ```
 
@@ -63,20 +63,26 @@ query parameters. Give either a full namespace or parameters:
 {"preset": "720p30", "params": {"pkg": "cmaf"}, "relay": "aiomoqt-relay", "draft": 22}
 ```
 
-**Track parameters.** Each one sets a tuple field of the draft. Parameters you
-leave out take the preset's or the service's fallback values. The response
-always carries the full namespace.
+**Track parameters.** Each one sets a tuple field of the draft. Required
+fields you leave out take the preset's or the service's fallback values, and
+optional ones (9 to 13) take the value the draft gives them when omitted. The
+response always carries the namespace in its shortest form, the one the
+service publishes; a namespace you pass in is rewritten to it.
 
 | Param | Field | Param | Field |
 |-------|-------|-------|-------|
-| `cat` | 1 catalog | `vfwd` | 9 video forwarding |
-| `pkg` | 2 packaging | `ac` | 10 audio codec |
-| `init` | 3 init data | `ch` | 11 channels |
-| `vc` | 4 video codec | `abr` | 12 audio kbps |
-| `h` | 5 height | `afpg` | 13 audio frames/group |
-| `fps` | 6 frame rate | `afwd` | 14 audio forwarding |
-| `vbr` | 7 video kbps | `content` | 15 content |
-| `gop` | 8 group ms | `dur` | 16 duration s |
+| `content` | 1 content | `ch` | 8 channels |
+| `cat` | 2 catalog | `init` | 9 init data (`catalog`) |
+| `pkg` | 3 packaging | `gop` | 10 group ms (2000, or 2002 at 29_97) |
+| `vc` | 4 video codec | `adel` | 11 audio delivery: `1`–`100` frames per group, or `dgram` (1) |
+| `h` | 5 height | `dur` | 12 duration s (0) |
+| `fps` | 6 frame rate | `vt` | 13 video tracks: `1`, `alt2`–`alt7`, `view2`–`view16` (1) |
+| `ac` | 7 audio codec | | |
+
+Bitrates are not parameters: the draft derives the video bitrate from height
+and frame rate, and the audio bitrate from codec and channels.
+`/api/v1/namespace/decode` reports them. The parameters `vbr`, `abr`, `vfwd`,
+`afwd` and `afpg` are refused with what replaced them.
 
 - `preset`: a name from `/api/v1/presets` (`720p30`, `1080p60`, `audio`,
   `cmaf`, …).
@@ -153,7 +159,8 @@ tuple field.
 ## Subscribing
 
 Subscribe with any MoQT client to the job's namespace on the job's relay. Track
-names are `catalog`, `video` and `audio`.
+names are `catalog`, `video` and `audio`; ladders and views add `video_1`,
+`video_2` and so on.
 
 - **moqx-main:** subscribe with draft 18. moqx negotiates draft 16 with a
   client that offers both 16 and 18, and the draft-18 timestamp properties

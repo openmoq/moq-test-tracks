@@ -17,10 +17,8 @@ publishes but does not encode, so the service supplies the source media.
 | Timing (draft §Timing) | `--timestamp-mapping` |
 | packaging `loc`, video `h264` / `h264cb` | source `mpegts` → `--ts <fifo> --ts-cadence fps=N[/D],gop=M --catalog-bitrate <video bps>` |
 | other `loc` video; `cmaf`, `locmaf`; content `clip` | source `mp4` → `--mp4 <file> --loop --packaging loc\|cmaf\|locmaf` |
-| video forwarding 1 | `--video-subgroups object` |
-| audio frames per group | `--audio-frames-per-group N` |
-| audio forwarding 1 | `--audio-subgroups object` |
-| audio forwarding 3 | `-D` |
+| audio delivery `N` | `--audio-frames-per-group N` |
+| audio delivery `dgram` | `--audio-frames-per-group 1 -D` (LOC only) |
 | audio codec `none` | `--no-audio` |
 | catalog `none` | `--no-catalog` |
 | catalog `msf` | `--target-latency 250` |
@@ -44,3 +42,6 @@ aiomoqt supports them:
 | on-demand prefix serving | `--serve-prefix` (draft §Publisher Behavior, on demand) |
 | a GOAWAY's New Session URI is followed to any host, off the relay allowlist | an allowlist for GOAWAY URIs (aiomoqt 0.15.0 or later) |
 | on a GOAWAY to the same address the old session stays open until the redial succeeds, so the relay drains for its full timeout | close the old session on a same-address GOAWAY |
+| video tracks `altN` (ladders) and `viewN` (views) | publish several video tracks in one namespace and catalog (draft field 13) |
+| datagram audio with `cmaf` packaging | `-D` with CMAF |
+| tracks end with PUBLISH_DONE TRACK_ENDED but no End of Track object status | the End of Track status before PUBLISH_DONE (draft §Publisher Behavior) |

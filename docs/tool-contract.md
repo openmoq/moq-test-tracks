@@ -40,7 +40,7 @@ tool reads `request.json` natively.
 `adapters/<tool_id>/manifest.yaml`:
 
 ```yaml
-contract_version: 1
+contract_version: 2
 id: aiomoqt
 name: aiomoqt pub_media
 repository: https://github.com/gmarzot/aiomoqt
@@ -56,9 +56,8 @@ capabilities:                      # coarse; used to grey out UI options
   packaging: [loc, cmaf, locmaf]
   video_codec: [h264, h264cb, av1, none]
   audio_codec: [aac, none]
-  video_forwarding: [0]
-  audio_forwarding: [0, 3]
-  audio_frames_per_group: [1]
+  audio_delivery_mode: [stream, dgram]  # dgram: audio in datagrams
+  video_tracks: ["1"]              # 1, altN ladders, viewN views
   content: [clock, bars, noise, clip]
   transport: [moqt, webtransport]
   datagram_transport: [moqt]
@@ -67,8 +66,9 @@ capabilities:                      # coarse; used to grey out UI options
   max_endpoints: 8                 # >1 = one process publishes to several relays
 ```
 
-- **Capability keys** are draft field names. A key the manifest omits means
-  the tool can do any value of that field.
+- **Capability keys** are draft field names, plus `audio_delivery_mode`
+  (`stream` or `dgram`) for field 11. A key the manifest omits means the tool
+  can do any value of that field.
 - **Combination rules** (for example, "datagram audio only with LOC") belong
   in the adapter's check mode, not in the manifest.
 - **`protocols`** lists the version fields the tool can produce. A tool that
@@ -102,21 +102,21 @@ No secrets are ever passed to a tool.
 
 ```json
 {
-  "contract_version": 1,
+  "contract_version": 2,
   "job_id": "j_7f3a9c",
   "protocol": "moq_test_tracks_00",
   "namespace": ["openmoq", "mtt", "aiomoqt", "moq_test_tracks_00",
-                "msf", "loc", "catalog", "h264", "720", "30", "2500", "2000", "0",
-                "aac", "2", "128", "1", "0", "clock", "0"],
-  "namespace_safe": "openmoq-mtt-aiomoqt-moq_test_tracks_00-msf-loc-catalog-h264-720-30-2500-2000-0-aac-2-128-1-0-clock-0",
+                "clock", "msf", "loc", "h264", "720", "30", "aac", "2"],
+  "namespace_safe": "openmoq-mtt-aiomoqt-moq_test_tracks_00-clock-msf-loc-h264-720-30-aac-2",
   "tracks": ["catalog", "video", "audio"],
   "fields": {
-    "catalog": "msf", "packaging": "loc", "init_data": "catalog",
+    "content": "clock", "catalog": "msf", "packaging": "loc",
     "video_codec": "h264", "video_height": 720, "video_width": 1280,
-    "frame_rate": "30", "video_kbps": 2500, "group_ms": 2000, "video_forwarding": 0,
-    "audio_codec": "aac", "audio_channels": 2,
-    "audio_kbps": 128, "audio_frames_per_group": 1, "audio_forwarding": 0,
-    "content": "clock", "duration_s": 0
+    "frame_rate": "30", "video_kbps": 2500,
+    "audio_codec": "aac", "audio_channels": 2, "audio_kbps": 128,
+    "init_data": "catalog", "group_ms": 2000,
+    "audio_delivery": 1, "audio_frames_per_group": 1,
+    "duration_s": 0, "video_tracks": "1"
   },
   "endpoints": [
     {"url": "moqt://moqx-main.ci.openmoq.org:4433", "transport": "moqt", "draft": 18}
@@ -190,10 +190,14 @@ These rules hold for every tool. They restate the draft operationally.
     is a whole number of frames.
 - Audio: one Object per codec frame, and `audio_frames_per_group` Objects
   per Group.
-- Subgroups follow the forwarding fields: 0 = one Subgroup per Group,
-  1 = one Subgroup per Object.
-- Audio forwarding 3 sends every audio Object as a datagram. If an Object
-  doesn't fit, the tool exits with 64 rather than falling back to a stream.
+- Each Group goes on one stream, as Subgroup 0, except with audio delivery
+  `dgram`: then every audio Object is its own Group, sent as a datagram. If
+  an Object doesn't fit, the tool exits with 64 rather than falling back to a
+  stream.
+- `fields` holds every tuple field, with omitted ones filled in, plus the
+  values the draft derives: `video_width`, `video_kbps`, `audio_kbps` and
+  `audio_frames_per_group`. `namespace` is always the shortest form, and is
+  the name to publish.
 
 **Timing** (draft §Timing)
 - Capture time is the scheduled wall-clock time of each frame: the start
