@@ -44,4 +44,3 @@ aiomoqt supports them:
 | on a GOAWAY to the same address the old session stays open until the redial succeeds, so the relay drains for its full timeout | close the old session on a same-address GOAWAY |
 | video tracks `altN` (ladders) and `viewN` (views) | publish several video tracks in one namespace and catalog (draft field 13) |
 | datagram audio with `cmaf` packaging | `-D` with CMAF |
-| tracks end with PUBLISH_DONE TRACK_ENDED but no End of Track object status | the End of Track status before PUBLISH_DONE (draft §Publisher Behavior) |
