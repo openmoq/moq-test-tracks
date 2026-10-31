@@ -129,7 +129,7 @@ function row(job) {
   const copy = el("button", "Copy");
   copy.addEventListener("click", () => navigator.clipboard.writeText(job.namespace));
   actions.append(log, copy);
-  const mine = me && (job.owner === me.key_id || me.role === "admin");
+  const mine = me && (job.owner === me.token_id || me.role === "admin");
   if (ACTIVE.includes(job.state) && mine && me.role !== "view") {
     const stop = el("button", "Stop");
     stop.addEventListener("click", () => stopJob(job.id, false));
@@ -195,7 +195,9 @@ async function showApp() {
   $("login").hidden = true;
   $("app").hidden = false;
   $("logout").hidden = false;
-  $("who").textContent = `${me.name} (${me.role})`;
+  const expires = new Date(me.expires * 1000).toISOString().slice(0, 10);
+  $("who").textContent = `${me.name} (${me.role}, ${me.tier})`;
+  $("who").title = `token ${me.token_id}; relays ${me.relays.join(", ") || "none"}; expires ${expires}`;
   $("stop-all").hidden = me.role !== "admin";
   const [tools, relays, presets, clips] = await Promise.all([
     api("GET", "/api/v1/tools"),
@@ -233,8 +235,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("login-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     try {
-      me = await api("POST", "/login", { key: $("key").value });
-      $("key").value = "";
+      me = await api("POST", "/login", { token: $("token").value });
+      $("token").value = "";
       $("login-error").textContent = "";
       await showApp();
     } catch (e) {

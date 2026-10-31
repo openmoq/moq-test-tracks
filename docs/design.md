@@ -67,7 +67,8 @@ docker compose runs three long-lived services, two of them from one image:
 - **proxy.** Caddy: TLS (ACME DNS-01 via Route53), security headers, rate
   limiting. The only published ports.
 - **api** (`mtt api`). Dashboard and API; auth, policy, job registry.
-  Holds the SQLite database (keys, jobs, audit) and the session secret.
+  Holds the token signing secret, the session secret and the SQLite
+  database (revoked token ids, audit).
   Never runs a tool.
 - **runner** (`mtt runner`). Hosts every tool, ffmpeg and the source cache.
   Each job is a subprocess tree (ffmpeg plus the adapter and tool) in its
@@ -86,7 +87,7 @@ Why jobs are subprocesses and not per-job containers:
 Why api and runner are separate containers:
 
 - Tools are MoQT clients talking to relays, and they parse whatever comes
-  back. If one is compromised, it lands in a container with no keys, no
+  back. If one is compromised, it lands in a container with no signing or
   session secret and no inbound port.
 - The cost is one internal HTTP interface (start, stop, list, events),
   which the supervisor needs anyway.
@@ -118,10 +119,10 @@ crawlers, link previews and CSRF can't start jobs.
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET | `/` | session | Dashboard; query parameters prefill the new-job form |
-| POST | `/login`, `/logout` | — | Exchange an API key for a session cookie |
+| POST | `/login`, `/logout` | — | Exchange a token for a session cookie |
 | GET | `/api/v1/namespace` | none | Parameters → full namespace and its §8.8 rendering |
 | GET | `/api/v1/namespace/decode?ns=` | none | Namespace → fields, or the validation errors |
-| GET | `/api/v1/tools`, `/api/v1/relays` | view | Registry and allowlist |
+| GET | `/api/v1/tools`, `/api/v1/relays` | view | Registry, and the relays the token grants |
 | POST | `/api/v1/jobs/check` | run | Dry run: validation, policy, the adapter's plan |
 | POST | `/api/v1/jobs` | run | Start or join a job; JSON body or query parameters |
 | GET | `/api/v1/jobs`, `/api/v1/jobs/{id}` | view | List and detail (own jobs; all for admin) |
@@ -158,7 +159,7 @@ are refused with what replaced them.
 Example:
 
 ```
-curl -X POST -H "Authorization: Bearer $MTT_KEY" \
+curl -X POST -H "Authorization: Bearer $MTT_TOKEN" \
   "https://moq-test.ci.openmoq.org/api/v1/jobs?preset=1080p60&ac=opus&adel=dgram&tool=aiomoqt&relay=moqx-main"
 ```
 
@@ -288,11 +289,11 @@ and code execution through the launch path.
 
 | Threat | Controls |
 |--------|----------|
-| Unauthenticated use | An API key is required for everything except `/healthz` and the namespace codec. Anonymous jobs are impossible. |
-| Key leakage | Keys look like `mtt_<id>_<secret>`. Only the SHA-256 of the secret is stored. Keys have scopes (`view`, `run`, `admin`), expiry and revocation. A key goes in the `Authorization` header, or is exchanged once for an HttpOnly, Secure, SameSite=Strict cookie. Query strings never carry a key. Keys are issued by a CLI inside the api container, never over HTTP, and each issue is audited. |
+| Unauthenticated use | A token is required for everything except `/healthz` and the namespace codec. Anonymous jobs are impossible. |
+| Token forgery and leakage | Tokens (`mtt1_…`) are CWTs in a COSE_Mac0 with HMAC-SHA256 under a server secret ([admin.md](admin.md#token-format)); nothing in a token is decoded before its MAC verifies. Each carries a role (`view`, `run`, `admin`), a limits tier, its relay grants and an expiry (at most 365 days, 30 for `unrestricted`); revocation by id is checked on every request. A token goes in the `Authorization` header, or is exchanged once for an HttpOnly, Secure, SameSite=Strict cookie holding its claims for at most 12 h under a separate secret. Query strings never carry a token. Tokens are issued by a CLI inside the api container, never over HTTP, and each issue is audited by its claims, never the token. Losing the database loses revocations, not access. |
 | CSRF / drive-by | GET never changes state. SameSite=Strict cookies, plus an Origin check on POST and DELETE. |
-| Traffic aimed at third parties | Relays come from the allowlist ([config/relays.yaml](../config/relays.yaml)), by id. A custom URL needs the admin scope, must be `moqt://` or `https://`, and must resolve to a public address (not private, loopback, link-local, multicast or CGNAT). The runner checks again. |
-| Resource exhaustion | Concurrency caps (global, live-encode and per key), caps on height, fps and bitrate (keys start with the per-key caps; admin keys, and keys created with `--unrestricted`, which must expire within 30 days, may exceed them, never the global ones), a mandatory TTL, dedupe, and rate limits in Caddy and the api. The runner container has CPU, memory and pids limits. |
+| Traffic aimed at third parties | Relays come from the catalog ([config/relays.yaml](../config/relays.yaml)), by id, and a job may use only those its token grants. Grants for URLs and owned domains are planned; they will need a `moqt://` or `https://` URL that resolves to a public address (not private, loopback, link-local, multicast or CGNAT), checked again by the runner. |
+| Resource exhaustion | Concurrency caps (global, live-encode and per token), caps on height, fps and bitrate (tokens start with the per-token caps; admin tokens, and `unrestricted` tokens, which must expire within 30 days, may exceed them, never the global ones), a mandatory TTL, dedupe, and rate limits in Caddy and the api. The runner container has CPU, memory and pids limits. |
 | Command injection | argv lists only, never a shell. Fields are validated against closed sets and ranges. Namespace fields are `[a-z0-9_]` and tool ids `[a-z0-9_]+`. Adapters get a reset environment with no secrets. |
 | Lateral movement | Containers run as non-root with a read-only root filesystem, tmpfs work directories, `cap_drop: [ALL]` and `no-new-privileges`, and no Docker socket. The api/runner split described in [Topology](#topology). |
 | Runaway jobs | The runner owns TTLs. Jobs are killed by process group, orphans are swept at start, and admins have a kill switch. |
@@ -321,8 +322,8 @@ Everything is in `deploy/compose.yaml`; the host only needs Docker.
     on the `obs` bridge address; deploy.sh adds the one ufw rule that lets
     that subnet reach it.
   - Grafana has no login of its own. Caddy strips client `X-WEBAUTH-*`
-    headers, asks the api (`/auth/grafana`) whether the session or key is
-    valid, and passes the key's name and role (Admin for admin keys, Viewer
+    headers, asks the api (`/auth/grafana`) whether the session or token is
+    valid, and passes the holder's name and role (Admin for admin tokens, Viewer
     otherwise). Grafana takes identity only from Caddy's fixed address.
     Login form, sign-up, anonymous and basic auth, plugin installs, external
     snapshots, embedding and phone-home are off; data source and dashboards
@@ -363,7 +364,7 @@ Everything is in `deploy/compose.yaml`; the host only needs Docker.
 ## Open decisions
 
 1. Should a read-only list of active namespaces be public, or should
-   everything sit behind a key?
+   everything sit behind a token?
 
 ## Draft open issues
 

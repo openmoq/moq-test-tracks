@@ -290,7 +290,7 @@ def test_key_job_limit(client):
     r = client.post("/jobs", json=other, headers=AUTH)
     assert (
         r.status_code == 429
-        and "this key is at its limit of 1 jobs" in r.json()["detail"]["errors"][0]
+        and "this token is at its limit of 1 jobs" in r.json()["detail"]["errors"][0]
     )
     assert (
         client.post("/jobs", json={**other, "unrestricted": True}, headers=AUTH).status_code == 201

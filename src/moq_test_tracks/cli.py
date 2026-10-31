@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import secrets
 import signal
 import subprocess
@@ -341,7 +342,12 @@ def cmd_api(args: argparse.Namespace) -> int:
     env = os.environ
     missing = [
         v
-        for v in ("MTT_RUNNER_TOKEN", "MTT_SESSION_SECRET", "MTT_PUBLIC_ORIGINS")
+        for v in (
+            "MTT_RUNNER_TOKEN",
+            "MTT_TOKEN_SECRET",
+            "MTT_SESSION_SECRET",
+            "MTT_PUBLIC_ORIGINS",
+        )
         if not env.get(v)
     ]
     if missing:
@@ -353,6 +359,7 @@ def cmd_api(args: argparse.Namespace) -> int:
     settings = Settings(
         runner_url=env.get("MTT_RUNNER_URL", "http://127.0.0.1:8090"),
         runner_token=env["MTT_RUNNER_TOKEN"],
+        token_secret=env["MTT_TOKEN_SECRET"],
         session_secret=env["MTT_SESSION_SECRET"],
         db_path=_db_path(args),
         public_origins=tuple(o.strip() for o in env["MTT_PUBLIC_ORIGINS"].split(",") if o.strip()),
@@ -370,38 +377,92 @@ def cmd_api(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_keys(args: argparse.Namespace) -> int:
+def _utc(t: float) -> str:
+    return time.strftime("%Y-%m-%d %H:%MZ", time.gmtime(t))
+
+
+def _write_private(path: Path, text: str) -> None:
+    """A new file only its owner can read; never overwrites."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text + "\n")
+
+
+def cmd_tokens(args: argparse.Namespace) -> int:
     from .api import auth
     from .api.db import Db
 
     db = Db(_db_path(args))
-    if args.keys_command == "create":
+    command = args.tokens_command
+    if command in ("create", "show"):
         try:
-            key = auth.new_key(db, args.name, args.role, args.expires_days, args.unrestricted)
+            signer = auth.Signer(os.environ.get("MTT_TOKEN_SECRET", ""))
+        except ValueError:
+            return _fail(["MTT_TOKEN_SECRET is not set or shorter than 32 characters"])
+    if command == "create":
+        try:
+            cfg = load_config(Path(args.root) if args.root else None)
+        except FileNotFoundError as e:
+            return _fail([str(e)])
+        unknown = [r for r in args.relay if r not in cfg.relays]
+        if unknown:
+            return _fail(
+                [f"unknown relay {r}; configured: {', '.join(cfg.relays)}" for r in unknown]
+            )
+        if args.role != "view" and not args.relay:
+            return _fail(["run and admin tokens need at least one --relay"])
+        try:
+            token, p = auth.mint(
+                signer,
+                args.name,
+                args.role,
+                relays=args.relay,
+                tier=args.tier,
+                expires_days=args.expires_days,
+            )
         except ValueError as e:
             return _fail([str(e)])
-        detail = f"{args.name} {args.role}" + (" unrestricted" if args.unrestricted else "")
-        db.audit("key_created", auth.parse(key)[0], None, detail)
-        print(key)
-        print("Store this key now; it cannot be shown again.", file=sys.stderr)
-    elif args.keys_command == "list":
-        now = time.time()
-        for k in auth.list_keys(db):
-            if k["revoked"]:
-                status = "revoked"
-            elif k["expires"] is not None and k["expires"] < now:
-                status = "expired"
-            else:
-                status = "active"
-            limits = "unrestricted" if k["unrestricted"] else "per-key"
-            expires = "never"
-            if k["expires"] is not None:
-                expires = time.strftime("%Y-%m-%d %H:%MZ", time.gmtime(k["expires"]))
-            print(f"{k['id']}  {k['role']:5}  {status:7}  {limits:12}  {expires:17}  {k['name']}")
-    elif args.keys_command == "revoke":
-        if not auth.revoke(db, args.key_id):
-            return _fail([f"no active key {args.key_id}"])
-        print(f"revoked {args.key_id}")
+        if args.out:
+            try:
+                _write_private(Path(args.out), token)
+            except FileExistsError:
+                return _fail([f"{args.out} exists"])
+        else:
+            print(token)
+        auth.record(db, p)
+        relays = ",".join(p.relays) or "-"
+        print(
+            f"{p.token_id}  {p.role} {p.tier}  relays {relays}  expires {_utc(p.expires)}  {p.name}",
+            file=sys.stderr,
+        )
+        if not args.out:
+            print("Store this token now; it cannot be shown again.", file=sys.stderr)
+    elif command == "list":
+        for t in auth.issued(db):
+            relays = ",".join(t["relays"]) or "-"
+            print(
+                f"{t['token_id']}  {t['role']:5}  {t['tier']:12}  {t['status']:7}  "
+                f"{_utc(t['expires'])}  {relays}  {t['name']}"
+            )
+    elif command == "revoke":
+        if not re.fullmatch(r"[0-9a-f]{16}", args.token_id):
+            return _fail(["a token id is 16 hex digits (mtt tokens list)"])
+        if not auth.revoke(db, args.token_id, args.reason):
+            return _fail([f"{args.token_id} is already revoked"])
+        db.audit("token_revoked", args.token_id, None, args.reason)
+        known = any(t["token_id"] == args.token_id for t in auth.issued(db))
+        print(f"revoked {args.token_id}" + ("" if known else " (not in this issue log)"))
+    elif command == "show":
+        token = (Path(args.file).read_text() if args.file else sys.stdin.read()).strip()
+        claims = signer.open(token)
+        p = auth.principal(claims) if claims is not None else None
+        if p is None:
+            return _fail(["not a token signed with this MTT_TOKEN_SECRET"])
+        if auth.is_revoked(db, p.token_id):
+            status = "revoked"
+        else:
+            status = "expired" if p.expires <= time.time() else "active"
+        print(json.dumps({**p.info(), "issued": claims[auth.IAT], "status": status}, indent=2))
     return 0
 
 
@@ -456,22 +517,35 @@ def build_parser() -> argparse.ArgumentParser:
     med_sub.add_parser("list", help="configured clips and what has been fetched")
     med.set_defaults(func=cmd_media)
 
-    keys = sub.add_parser("keys", help="manage API keys")
-    keys.add_argument("--db", help="SQLite path (default: MTT_DB or var/api.sqlite)")
-    keys_sub = keys.add_subparsers(dest="keys_command", required=True)
-    create = keys_sub.add_parser("create", help="create a key and print it once")
-    create.add_argument("--name", required=True)
+    tok = sub.add_parser("tokens", help="issue, list, revoke and inspect tokens (docs/admin.md)")
+    tok.add_argument("--db", help="SQLite path (default: MTT_DB or var/api.sqlite)")
+    tok_sub = tok.add_subparsers(dest="tokens_command", required=True)
+    create = tok_sub.add_parser("create", help="issue a token and print it once")
+    create.add_argument("--name", required=True, help="who holds it")
     create.add_argument("--role", choices=("view", "run", "admin"), default="run")
-    create.add_argument("--expires-days", type=float)
     create.add_argument(
-        "--unrestricted",
-        action="store_true",
-        help="exempt from per-key limits up to the global caps; needs --expires-days <= 30",
+        "--tier",
+        choices=("standard", "unrestricted"),
+        default="standard",
+        help="unrestricted: past the per-token limits up to the global caps; expires within 30 days",
     )
-    keys_sub.add_parser("list", help="list keys")
-    rev = keys_sub.add_parser("revoke", help="revoke a key by id")
-    rev.add_argument("key_id")
-    keys.set_defaults(func=cmd_keys)
+    create.add_argument(
+        "--relay",
+        action="append",
+        default=[],
+        metavar="ID",
+        help="a relay id from config/relays.yaml it may publish to; repeat for more",
+    )
+    create.add_argument("--expires-days", type=float, default=30, help="default 30, at most 365")
+    create.add_argument("--out", metavar="FILE", help="write it to a new file only you can read")
+    create.add_argument("--root", help="repository root holding config/")
+    tok_sub.add_parser("list", help="issued tokens and their status")
+    rev = tok_sub.add_parser("revoke", help="revoke a token by id")
+    rev.add_argument("token_id")
+    rev.add_argument("--reason", default="")
+    show = tok_sub.add_parser("show", help="verify a token from stdin and print its claims")
+    show.add_argument("--file", help="read the token from this file instead")
+    tok.set_defaults(func=cmd_tokens)
 
     ns = sub.add_parser("ns", help="test namespace codec")
     ns_sub = ns.add_subparsers(dest="ns_command", required=True)

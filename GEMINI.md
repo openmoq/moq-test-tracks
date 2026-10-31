@@ -12,9 +12,9 @@
 
 1. **Security Boundary & Subprocess Safety (`src/moq_test_tracks/**`, `adapters/**`, `config/**`, `deploy/**`, `docker/**`)**:
    - Refer to `docs/design.md#security-model` and `docs/tool-contract.md`.
-   - **No shell execution**: Job launch and adapter invocations must use explicit `argv` lists (`shell=False`), validated against closed sets/ranges (`[a-z0-9_]` for namespace fields and tool IDs), with a sanitized environment containing no API keys or session secrets.
+   - **No shell execution**: Job launch and adapter invocations must use explicit `argv` lists (`shell=False`), validated against closed sets/ranges (`[a-z0-9_]` for namespace fields and tool IDs), with a sanitized environment containing no tokens or signing or session secrets.
    - **SSRF & Relay Allowlist**: Relay targets must come from `config/relays.yaml` by ID, or (for `admin`-scoped custom URLs) be validated as `moqt://` or `https://` resolving strictly to public IP addresses (rejecting loopback, private, link-local, multicast, and CGNAT ranges in both `api` and `runner`).
-   - **Auth & CSRF**: State-changing endpoints must be `POST` or `DELETE` (never `GET`), enforce `Origin` checks and `SameSite=Strict` cookies, and never accept or log API keys in query strings. Only SHA-256 hashes of API key secrets may be persisted.
+   - **Auth & CSRF**: State-changing endpoints must be `POST` or `DELETE` (never `GET`), enforce `Origin` checks and `SameSite=Strict` cookies, and never accept or log tokens in query strings. Tokens are never persisted or logged, only their claims; nothing in a token may be decoded before its MAC verifies.
    - **Process Group & TTL Supervision**: The runner owns job TTL enforcement and must supervise and terminate jobs by process group so `ffmpeg` and tool child processes cannot outlive their job or leak on restart.
 
 2. **Namespace Codec & Tool Contract Compliance (`src/moq_test_tracks/spec/**`, `adapters/**`)**:

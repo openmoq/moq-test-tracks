@@ -38,6 +38,7 @@ services:
     environment:
       MTT_RUNNER_URL: http://runner:8090
       MTT_RUNNER_TOKEN: ${MTT_RUNNER_TOKEN:?run deploy.sh to generate secrets}
+      MTT_TOKEN_SECRET: ${MTT_TOKEN_SECRET:?run deploy.sh to generate secrets}
       MTT_SESSION_SECRET: ${MTT_SESSION_SECRET:?run deploy.sh to generate secrets}
       MTT_PUBLIC_ORIGINS: ${MTT_PUBLIC_ORIGINS:?set MTT_PUBLIC_ORIGINS in .env}
       MTT_DB: /var/lib/mtt/api.sqlite

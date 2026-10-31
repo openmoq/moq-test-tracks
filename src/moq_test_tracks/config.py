@@ -212,7 +212,7 @@ def job_errors(
     unrestricted: bool = False,
 ) -> list[str]:
     """Reasons a job is out of bounds before the adapter is asked. Unrestricted
-    jobs (admin or unrestricted keys) may exceed the per-key limits, never the
+    jobs (admin or unrestricted tokens) may exceed the per-token limits, never the
     global caps."""
     errors = []
     if mode not in MODES:

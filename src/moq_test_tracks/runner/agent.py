@@ -54,8 +54,9 @@ class JobIn(BaseModel):
     draft: int | None = None
     mode: str = "publish"
     ttl_s: int | None = None
-    owner: str | None = None
-    unrestricted: bool = False  # exempt from per-key limits; set by the api service
+    owner: str | None = None  # token id
+    owner_name: str | None = None
+    unrestricted: bool = False  # exempt from per-token limits; set by the api service
 
 
 class Rejected(Exception):
@@ -83,6 +84,7 @@ class Entry:
     seq: int = 0
     last_state: str = ""
     restarts: int = 0
+    owner_name: str | None = None
 
     @property
     def id(self) -> str:
@@ -124,6 +126,7 @@ class Entry:
             "created": self.created,
             "expires": self.created + req["ttl_s"],
             "owner": self.owner,
+            "owner_name": self.owner_name,
             "plan": self.check.argv,
             "source": self.check.source,
             "exit_code": self.exit_code,
@@ -252,14 +255,16 @@ class Registry:
         if body.owner is not None and not body.unrestricted:
             limit = cfg.policy.key_max_jobs
             if sum(1 for e in active if e.owner == body.owner) >= limit:
-                raise Rejected(429, [f"this key is at its limit of {limit} jobs"])
+                raise Rejected(429, [f"this token is at its limit of {limit} jobs"])
         job = self._job(body, tool, relay, namespace, spec, draft, ttl, clip, self.work)
         check = await self._adapter_check(job)
         live = sum(1 for e in active if e.check.source == "mpegts")
         if check.source == "mpegts" and live >= cfg.policy.max_live_encodes:
             limit = cfg.policy.max_live_encodes
             raise Rejected(429, [f"the runner is at its limit of {limit} live encodes"])
-        entry = Entry(job, namespace, relay.id, body.owner, time.time(), check)
+        entry = Entry(
+            job, namespace, relay.id, body.owner, time.time(), check, owner_name=body.owner_name
+        )
         self.jobs[entry.id] = entry
         entry.sync_state()
         entry.task = asyncio.create_task(self._run(entry))
