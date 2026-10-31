@@ -30,6 +30,13 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Changed
 
+- **Breaking:** tokens replace API keys; every `mtt_…` key stops working.
+  - **Format:** `mtt1_…`, a CWT in a COSE_Mac0 (HMAC-SHA256) carrying the holder, role, limits tier (`standard` or `unrestricted`), the relays it may publish to, and an expiry (30 days by default, at most 365; at most 30 for `unrestricted`). It is verified by its signature under `MTT_TOKEN_SECRET`, which deploy.sh generates; only revoked token ids are looked up.
+  - **Relay grants:** a job may use only a relay its token names. `/api/v1/relays` lists those, and a job without `relay` gets `moqx-main` if granted, else the token's first relay.
+  - **CLI:** `mtt tokens create|list|revoke|show` replaces `mtt keys`. `create` takes `--name`, `--role`, `--tier`, `--relay` (repeatable), `--expires-days` and `--out`.
+  - **API:** `GET /api/v1/token` (also `/api/v1/me`) shows the caller's claims, `POST /login` takes `{"token": …}`, and a dashboard session lasts at most 12 h or until the token expires.
+  - **Database:** the `keys` table is dropped; the api database holds revoked token ids and the audit log.
+  - **Docs:** [docs/admin.md](docs/admin.md) covers issuing, grants, use cases, revoking, rotating and backup; [docs/user-guide.md](docs/user-guide.md) covers using a token.
 - **Breaking:** `moq_test_tracks_00` follows the revised draft.
   - **Field order:** the required fields come first (content, catalog, packaging, video codec, height, frame rate, audio codec, channels). Init data, group duration, audio delivery, duration and the new video tracks field follow, and may be left off the end.
   - **Shortest form:** the service names every set of tracks in its shortest form, and rewrites longer requests to it.

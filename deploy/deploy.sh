@@ -31,7 +31,7 @@ if [ ! -f .env ]; then
     cp .env.example .env
 fi
 chmod 600 .env
-for var in MTT_RUNNER_TOKEN MTT_SESSION_SECRET MTT_GRAFANA_ADMIN_PASSWORD; do
+for var in MTT_RUNNER_TOKEN MTT_TOKEN_SECRET MTT_SESSION_SECRET MTT_GRAFANA_ADMIN_PASSWORD; do
     if ! grep -q "^$var=" .env; then
         echo "$var=" >> .env
     fi

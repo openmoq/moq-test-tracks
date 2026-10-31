@@ -24,7 +24,7 @@ Optional fields 9 to 13 (init data, group duration, audio delivery, duration,
 video tracks) follow when they differ from the values the draft gives them.
 
 > **Status: in testing** at <https://moq-test.ci.openmoq.org>. Access is by
-> API key; see [Getting started](#getting-started). The architecture, security
+> token; see [Getting started](#getting-started). The architecture, security
 > model and phases are in [docs/design.md](docs/design.md).
 
 ## Pieces
@@ -36,23 +36,25 @@ video tracks) follow when they differ from the values the draft gives them.
   from synthetic objects to real media. Serving moq-test-00 tracks is
   planned.
 - **The service.** A web dashboard and API at `moq-test.ci.openmoq.org` to
-  start, watch and stop generator jobs. Access is by API key.
+  start, watch and stop generator jobs. Access is by token.
 - **Tools.** Publisher tools plug in through the
   [tool contract](docs/tool-contract.md): a manifest, an adapter that turns
   the standard request into the tool's command line, and an enable line in
   [config/tools.yaml](config/tools.yaml). aiomoqt `pub_media` is first.
-- **Relays.** Jobs publish to an allowlisted relay
-  ([config/relays.yaml](config/relays.yaml)). The default is the OpenMOQ CI
-  relay, moqx-main.
+- **Relays.** Jobs publish to a relay from the catalog in
+  [config/relays.yaml](config/relays.yaml) that the caller's token grants.
+  The default is the OpenMOQ CI relay, moqx-main.
 
 ## Getting started
 
-1. **Get a key.** The service operators issue keys; open an issue in this
-   repository to ask for one. A `run` key can start and stop its own jobs.
-2. **Start a job.** Log in to the dashboard with the key, pick a shape, and
+1. **Get a token.** The service operators issue tokens; open an issue in this
+   repository to ask for one. A `run` token can start and stop its own jobs
+   on the relays it names. The [user guide](docs/user-guide.md) covers using
+   it; operators see the [admin guide](docs/admin.md).
+2. **Start a job.** Log in to the dashboard with the token, pick a shape, and
    start it. Or use the [API](docs/api.md):
    ```sh
-   curl -s -X POST -H "Authorization: Bearer $MTT_KEY" \
+   curl -s -X POST -H "Authorization: Bearer $MTT_TOKEN" \
      "https://moq-test.ci.openmoq.org/api/v1/jobs?preset=720p30&ttl=600"
    ```
    The response carries the job's namespace and relay. Jobs end at their TTL,
@@ -69,9 +71,9 @@ plus a clip id after the tool for clips. The draft's examples use the prefix
 
 | Path | Contents |
 |------|----------|
-| [docs/](docs/) | [API](docs/api.md), [tool contract](docs/tool-contract.md), [design](docs/design.md) |
+| [docs/](docs/) | [User guide](docs/user-guide.md), [admin guide](docs/admin.md), [API](docs/api.md), [tool contract](docs/tool-contract.md), [design](docs/design.md) |
 | [adapters/](adapters/) | One directory per tool: manifest, adapter, notes |
-| [config/](config/) | Enabled tools, relay allowlist, policy limits |
+| [config/](config/) | Enabled tools, relay catalog, policy limits |
 | [media/](media/) | Clip sources (`sources.yaml`) |
 | [src/moq_test_tracks/](src/moq_test_tracks/) | Service, runner, namespace codec, adapters |
 

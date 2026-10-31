@@ -2,12 +2,18 @@
 # This source code is licensed under the Apache 2.0 license found in the
 # LICENSE file in the root directory of this source tree.
 
-# Public API: presets, keys, sessions, roles, origin checks, and runner relay,
-# against a stub runner.
+# Public API: presets, tokens, sessions, roles, relay grants, origin checks,
+# and runner relay, against a stub runner.
 
+import base64
+import io
 import json
+import os
+import sqlite3
+import time
 from pathlib import Path
 
+import cbor2
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -21,6 +27,9 @@ from moq_test_tracks.cli import main
 ROOT = Path(__file__).resolve().parents[1]
 ORIGIN = "https://mtt.test"
 SECRET = "s" * 40
+TOKEN_SECRET = "k" * 40
+SIGNER = auth.Signer(TOKEN_SECRET)
+RELAYS = tuple(config.load(ROOT).relays)
 
 
 class StubRunner:
@@ -68,6 +77,7 @@ def app(tmp_path, stub):
     settings = Settings(
         runner_url="http://runner",
         runner_token="runner-token",
+        token_secret=TOKEN_SECRET,
         session_secret=SECRET,
         db_path=tmp_path / "api.sqlite",
         public_origins=(ORIGIN,),
@@ -83,10 +93,17 @@ def client(app):
         yield c
 
 
+def mint(name, role="run", relays=RELAYS, **kw):
+    return auth.mint(SIGNER, name, role, relays=relays, **kw)[0]
+
+
+def token_id(token):
+    return auth.principal(SIGNER.open(token)).token_id
+
+
 @pytest.fixture
 def keys(app):
-    db = app.state.db
-    return {role: auth.new_key(db, f"{role}-user", role) for role in auth.ROLES}
+    return {role: mint(f"{role}-user", role) for role in auth.ROLES}
 
 
 def bearer(key):
@@ -134,77 +151,162 @@ def test_preset_errors():
         presets.resolve({"init": "track"}, "cmaf")
 
 
-# keys and sessions
+# tokens and sessions
 
 
-def test_keys(tmp_path):
-    db = Db(tmp_path / "k.sqlite")
-    key = auth.new_key(db, "alice", "run")
-    assert key.startswith("mtt_") and auth.parse(key)
-    p = auth.verify(db, key)
-    assert p.name == "alice" and p.can("view") and p.can("run") and not p.can("admin")
-    assert auth.verify(db, key[:-1] + ("x" if key[-1] != "x" else "y")) is None
-    assert auth.verify(db, "nonsense") is None
-    stored = db.query("SELECT secret_hash FROM keys")[0]["secret_hash"]
-    assert auth.parse(key)[1] not in stored
-    assert auth.revoke(db, p.key_id) and auth.verify(db, key) is None
-    expired = auth.new_key(db, "bob", "view", expires_days=-1)
-    assert auth.verify(db, expired) is None
-    wide = auth.verify(db, auth.new_key(db, "carol", "run", expires_days=7, unrestricted=True))
-    assert wide.unrestricted and wide.exempt and not wide.can("admin")
-    assert not p.exempt
-    for days in (None, 31):
-        with pytest.raises(ValueError, match="within 30 days"):
-            auth.new_key(db, "dave", "run", expires_days=days, unrestricted=True)
+def test_tokens(tmp_path):
+    db = Db(tmp_path / "t.sqlite")
+    token, p = auth.mint(SIGNER, "alice", "run", relays=["moqx-main", "moqx-main", "us-ord-3"])
+    assert token.startswith("mtt1_") and len(token) < 200
+    assert auth.verify(SIGNER, db, token) == p
+    assert p.relays == ("moqx-main", "us-ord-3") and p.tier == "standard"
+    assert p.can("view") and p.can("run") and not p.can("admin") and not p.exempt
+    assert 29.9 * 86400 < p.expires - time.time() <= 30 * 86400
+    for i in (6, len(token) // 2, len(token) - 1):
+        flipped = token[:i] + ("A" if token[i] != "A" else "B") + token[i + 1 :]
+        assert auth.verify(SIGNER, db, flipped) is None
+    assert auth.verify(auth.Signer("o" * 40), db, token) is None
+    for junk in ("nonsense", "mtt_x_y", "mtt1_", "mtt1_!!!!", token + "AAAA", "mtt1_" + "A" * 5000):
+        assert auth.verify(SIGNER, db, junk) is None
+    expired, _ = auth.mint(SIGNER, "bob", "view", expires_days=1, now=time.time() - 2 * 86400)
+    assert auth.verify(SIGNER, db, expired) is None
+    future, _ = auth.mint(SIGNER, "bob", "view", now=time.time() + 3600)
+    assert auth.verify(SIGNER, db, future) is None
+    assert auth.revoke(db, p.token_id) and auth.verify(SIGNER, db, token) is None
+    assert not auth.revoke(db, p.token_id)
+    _, wide = auth.mint(SIGNER, "carol", "run", tier="unrestricted", expires_days=30)
+    assert wide.exempt and not wide.can("admin")
+    assert auth.mint(SIGNER, "root", "admin")[1].exempt
+    for kw, text in (
+        ({"tier": "unrestricted", "expires_days": 31}, "within 30 days"),
+        ({"expires_days": 366}, "within 365 days"),
+        ({"expires_days": 0}, "within 365 days"),
+        ({"tier": "gold"}, "tier must be"),
+        ({"role": "root"}, "role must be"),
+        ({"name": 'a "b"'}, "name:"),
+        ({"relays": [""]}, "must not be empty"),
+    ):
+        args = {"name": "dave", "role": "run", **kw}
+        with pytest.raises(ValueError, match=text):
+            auth.mint(SIGNER, args.pop("name"), args.pop("role"), **args)
 
 
-def test_cli_keys_list(tmp_path, capsys):
-    path = tmp_path / "k.sqlite"
-    db = Db(path)
-    auth.new_key(db, "alice", "run")
-    auth.new_key(db, "bob", "view", expires_days=-1)
-    auth.revoke(db, auth.parse(auth.new_key(db, "carol", "run", expires_days=7))[0])
-    assert main(["keys", "--db", str(path), "list"]) == 0
-    rows = {line.split()[-1]: line.split() for line in capsys.readouterr().out.splitlines()}
-    assert rows["alice"][2] == "active" and "never" in rows["alice"]
-    assert rows["bob"][2] == "expired"
-    assert rows["carol"][2] == "revoked"
+def unwrap(token):
+    """The CWT tag around a token's COSE_Mac0."""
+    body = token[len(auth.PREFIX) :]
+    return cbor2.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
 
 
-def test_keys_table_gains_unrestricted(tmp_path):
-    import sqlite3
+def test_token_structure():
+    token, p = auth.mint(SIGNER, "alice", "admin", relays=["moqx-main"], tier="unrestricted")
+    cwt = unwrap(token)
+    assert cwt.tag == 61 and cwt.value.tag == 17
+    protected, unprotected, payload, tag = cwt.value.value
+    header = cbor2.loads(protected)
+    assert header[1] == 5 and len(header[4]) == 4 and unprotected == {} and len(tag) == 32
+    claims = cbor2.loads(payload)
+    assert (claims[1], claims[2], claims[7].hex()) == ("mtt", "alice", p.token_id)
+    assert claims["mtt"] == {1: "admin", 2: ["moqx-main"], 3: "unrestricted"}
+    standard = cbor2.loads(unwrap(mint("bob")).value.value[2])
+    assert 3 not in standard["mtt"]  # the default tier is left out
+    assert SIGNER.open(SIGNER.sign([1, 2])) is None  # a MAC'd payload that is not a map
+    assert auth.principal({1: "mtt", 2: "x", 4: 1, 6: 1, 7: b"x" * 8}) is None
+    assert auth.principal({**claims, "mtt": {1: "run", 2: "moqx-main"}}) is None
 
+
+def test_db_drops_old_keys_table(tmp_path):
     path = tmp_path / "old.sqlite"
     with sqlite3.connect(path) as c:
-        c.execute(
-            "CREATE TABLE keys (id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL,"
-            " secret_hash TEXT NOT NULL, created REAL NOT NULL, expires REAL, revoked REAL,"
-            " last_used REAL)"
-        )
+        c.execute("CREATE TABLE keys (id TEXT PRIMARY KEY, secret_hash TEXT)")
     db = Db(path)
-    assert auth.verify(db, auth.new_key(db, "erin", "run")).unrestricted is False
-    with pytest.raises(ValueError):
-        auth.new_key(db, "eve", "root")
+    tables = {r["name"] for r in db.query("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "keys" not in tables and {"revoked", "audit"} <= tables
 
 
 def test_sessions(tmp_path):
     db = Db(tmp_path / "s.sqlite")
-    key = auth.new_key(db, "alice", "run")
-    p = auth.verify(db, key)
+    token, p = auth.mint(SIGNER, "alice", "run", relays=["moqx-main"])
     sessions = auth.Sessions(SECRET, db)
-    cookie = sessions.issue(p)
-    assert sessions.verify(cookie) == p
-    key_id, expiry, sig = cookie.split(".")
-    assert sessions.verify(f"{key_id}.{int(expiry) + 999}.{sig}") is None
-    flipped = cookie[:-1] + ("0" if cookie[-1] != "0" else "1")
-    assert sessions.verify(flipped) is None
-    assert sessions.verify("garbage") is None
-    other = auth.Sessions("t" * 40, db)
-    assert other.verify(cookie) is None
-    auth.revoke(db, p.key_id)
+    cookie, max_age = sessions.issue(p)
+    s = sessions.verify(cookie)
+    assert (s.token_id, s.name, s.role, s.relays) == (p.token_id, p.name, p.role, p.relays)
+    assert max_age == pytest.approx(auth.SESSION_TTL_S, abs=2)
+    assert s.expires <= time.time() + auth.SESSION_TTL_S
+    assert auth.verify(SIGNER, db, cookie) is None  # a session is not a token
+    assert sessions.verify(token) is None  # nor a token a session
+    flipped = cookie[:-1] + ("A" if cookie[-1] != "A" else "B")
+    assert sessions.verify(flipped) is None and sessions.verify("garbage") is None
+    assert auth.Sessions("t" * 40, db).verify(cookie) is None
+    _, short = auth.mint(SIGNER, "bob", "run", relays=["moqx-main"], expires_days=0.1)
+    assert sessions.issue(short)[1] <= 0.1 * 86400
+    auth.revoke(db, p.token_id)
     assert sessions.verify(cookie) is None
     with pytest.raises(ValueError):
         auth.Sessions("short", db)
+
+
+def test_cli_tokens(tmp_path, capsys, monkeypatch):
+    db = str(tmp_path / "t.sqlite")
+    root = ["--root", str(ROOT)]
+
+    def tokens(*args):
+        return main(["tokens", "--db", db, *args])
+
+    monkeypatch.delenv("MTT_TOKEN_SECRET", raising=False)
+    assert tokens("create", "--name", "alice", "--relay", "moqx-main", *root) == 2
+    assert "MTT_TOKEN_SECRET" in capsys.readouterr().err
+    monkeypatch.setenv("MTT_TOKEN_SECRET", TOKEN_SECRET)
+    assert tokens("create", "--name", "alice", "--relay", "moqx-main", *root) == 0
+    out = capsys.readouterr()
+    alice = out.out.strip()
+    assert alice.startswith("mtt1_") and "cannot be shown again" in out.err
+    assert auth.principal(SIGNER.open(alice)).relays == ("moqx-main",)
+    path = tmp_path / "bob.token"
+    create_bob = ("create", "--name", "bob", "--role", "admin", "--relay", "us-ord-3")
+    assert tokens(*create_bob, "--out", str(path), *root) == 0
+    assert capsys.readouterr().out == ""
+    assert os.stat(path).st_mode & 0o777 == 0o600
+    bob = path.read_text().strip()
+    assert tokens(*create_bob, "--out", str(path), *root) == 2  # never overwrites
+    for bad in (
+        ("--name", "carol"),  # a run token needs a relay
+        ("--name", "carol", "--relay", "nowhere"),
+        (
+            "--name",
+            "carol",
+            "--relay",
+            "moqx-main",
+            "--tier",
+            "unrestricted",
+            "--expires-days",
+            "31",
+        ),
+    ):
+        assert tokens("create", *bad, *root) == 2
+    assert tokens("create", "--name", "vic", "--role", "view", *root) == 0
+    capsys.readouterr()
+    assert tokens("revoke", token_id(alice), "--reason", "left") == 0
+    assert tokens("revoke", token_id(alice)) == 2
+    assert tokens("revoke", "not-an-id") == 2
+    assert tokens("revoke", "0123456789abcdef") == 0
+    assert "not in this issue log" in capsys.readouterr().out
+    assert tokens("list") == 0
+    rows = {line.split()[-1]: line.split() for line in capsys.readouterr().out.splitlines()}
+    assert rows["alice"][3] == "revoked" and rows["bob"][3] == "active"
+    assert rows["bob"][1:3] == ["admin", "standard"] and rows["bob"][-2] == "us-ord-3"
+    assert rows["vic"][-2] == "-"
+    monkeypatch.setattr("sys.stdin", io.StringIO(alice + "\n"))
+    assert tokens("show") == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert shown["name"] == "alice" and shown["status"] == "revoked" and shown["issued"] > 0
+    assert tokens("show", "--file", str(path)) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "active"
+    monkeypatch.setenv("MTT_TOKEN_SECRET", "o" * 40)
+    assert tokens("show", "--file", str(path)) == 2
+    assert tokens("list") == 0  # listing needs no secret
+    actions = [r["action"] for r in Db(Path(db)).query("SELECT action FROM audit")]
+    assert actions.count("token_created") == 3 and actions.count("token_revoked") == 2
+    assert bob not in Path(db).read_bytes().decode(errors="replace")
 
 
 def test_limiter():
@@ -244,7 +346,35 @@ def test_authentication_required(client, keys):
     assert client.get("/api/v1/jobs").status_code == 401
     assert client.get("/api/v1/jobs", params={"key": keys["admin"]}).status_code == 401
     assert client.get("/api/v1/jobs", headers=bearer("mtt_x_y")).status_code == 401
-    assert client.get("/api/v1/me", headers=bearer(keys["view"])).json()["role"] == "view"
+    other = auth.mint(auth.Signer("o" * 40), "x", "admin", relays=RELAYS)[0]
+    assert client.get("/api/v1/jobs", headers=bearer(other)).status_code == 401
+    info = client.get("/api/v1/token", headers=bearer(keys["view"])).json()
+    assert info["role"] == "view" and info["name"] == "view-user" and info["tier"] == "standard"
+    assert info["token_id"] == token_id(keys["view"]) and info["relays"] == list(RELAYS)
+    assert client.get("/api/v1/me", headers=bearer(keys["view"])).json() == info
+    auth.revoke(client.app.state.db, info["token_id"])
+    assert client.get("/api/v1/token", headers=bearer(keys["view"])).status_code == 401
+
+
+def test_relay_grants(client, stub):
+    one = bearer(mint("one", relays=["aiomoqt-relay"]))
+    listed = client.get("/api/v1/relays", headers=one).json()
+    assert listed["default"] == "aiomoqt-relay"
+    assert [r["id"] for r in listed["relays"]] == ["aiomoqt-relay"]
+    assert client.post("/api/v1/jobs", json={"preset": "360p"}, headers=one).status_code == 201
+    assert stub.posted[-1]["relay"] == "aiomoqt-relay"
+    for path in ("/api/v1/jobs", "/api/v1/jobs/check"):
+        r = client.post(path, json={"preset": "360p", "relay": "moqx-main"}, headers=one)
+        assert r.status_code == 403 and "may not publish to moqx-main" in r.text
+    r = client.post("/api/v1/jobs?relay=nowhere", json={}, headers=one)
+    assert r.status_code == 403
+    both = bearer(mint("both", relays=["us-ord-3", "moqx-main"]))
+    assert client.get("/api/v1/relays", headers=both).json()["default"] == "moqx-main"
+    none = bearer(mint("none", relays=()))
+    assert client.get("/api/v1/relays", headers=none).json() == {"default": None, "relays": []}
+    r = client.post("/api/v1/jobs", json={"preset": "360p"}, headers=none)
+    assert r.status_code == 403 and "grants no relays" in r.text
+    assert len(stub.posted) == 1
 
 
 def test_roles(client, keys, stub):
@@ -253,8 +383,7 @@ def test_roles(client, keys, stub):
     r = client.post("/api/v1/jobs", json={"preset": "360p"}, headers=bearer(keys["run"]))
     assert r.status_code == 201
     job = r.json()
-    run_id = auth.parse(keys["run"])[0]
-    assert stub.posted[-1]["owner"] == run_id and job["owner_name"] == "run-user"
+    assert stub.posted[-1]["owner"] == token_id(keys["run"]) and job["owner_name"] == "run-user"
     assert stub.posted[-1]["relay"] == "moqx-main" and stub.posted[-1]["mode"] == "publish"
     assert stub.posted[-1]["unrestricted"] is False
     forged = {"preset": "360p", "unrestricted": True}
@@ -262,10 +391,10 @@ def test_roles(client, keys, stub):
     assert stub.posted[-1]["unrestricted"] is False  # only the caller's key sets it
     client.post("/api/v1/jobs", json={"preset": "360p"}, headers=bearer(keys["admin"]))
     assert stub.posted[-1]["unrestricted"] is True
-    wide = auth.new_key(client.app.state.db, "wide", "run", expires_days=1, unrestricted=True)
+    wide = mint("wide", tier="unrestricted", expires_days=1)
     client.post("/api/v1/jobs", json={"preset": "360p"}, headers=bearer(wide))
     assert stub.posted[-1]["unrestricted"] is True
-    other = auth.new_key(client.app.state.db, "other", "run")
+    other = mint("other")
     assert client.delete(f"/api/v1/jobs/{job['id']}", headers=bearer(other)).status_code == 403
     assert (
         client.delete(f"/api/v1/jobs/{job['id']}", headers=bearer(keys["run"])).status_code == 200
@@ -329,19 +458,19 @@ def test_grafana_forward_auth(client, keys):
     assert browser.status_code == 302 and browser.headers["location"] == "/"
     viewer = client.get("/auth/grafana", headers={**bearer(keys["run"]), **forged})
     assert viewer.status_code == 200
-    assert viewer.headers["x-webauth-user"] == f"mtt-{auth.parse(keys['run'])[0]}"
+    assert viewer.headers["x-webauth-user"] == f"mtt-{token_id(keys['run'])}"
     assert viewer.headers["x-webauth-role"] == "Viewer"
     assert viewer.headers["x-webauth-name"] == "run-user"
     admin = client.get("/auth/grafana", headers=bearer(keys["admin"]))
     assert admin.headers["x-webauth-role"] == "Admin"
-    odd = auth.new_key(client.app.state.db, 'a "b"\nc', "view")
-    assert client.get("/auth/grafana", headers=bearer(odd)).headers["x-webauth-name"] == "a _b__c"
+    odd = mint("a@b c", "view")
+    assert client.get("/auth/grafana", headers=bearer(odd)).headers["x-webauth-name"] == "a_b c"
     post = {"X-Forwarded-Method": "POST"}
     assert client.get("/auth/grafana", headers={**bearer(keys["run"]), **post}).status_code == 200
 
 
 def test_grafana_cookie_needs_origin_for_unsafe_methods(client, keys):
-    client.post("/login", json={"key": keys["run"]}, headers={"Origin": ORIGIN})
+    client.post("/login", json={"token": keys["run"]}, headers={"Origin": ORIGIN})
     assert client.get("/auth/grafana").status_code == 200
     post = {"X-Forwarded-Method": "POST"}
     assert client.get("/auth/grafana", headers=post).status_code == 403
@@ -357,9 +486,10 @@ def test_grafana_cookie_needs_origin_for_unsafe_methods(client, keys):
 
 
 def test_login_session_and_origin(client, keys):
-    assert client.post("/login", json={"key": keys["run"]}).status_code == 403  # no Origin
-    r = client.post("/login", json={"key": keys["run"]}, headers={"Origin": ORIGIN})
+    assert client.post("/login", json={"token": keys["run"]}).status_code == 403  # no Origin
+    r = client.post("/login", json={"token": keys["run"]}, headers={"Origin": ORIGIN})
     assert r.status_code == 200 and "mtt_session" in r.cookies
+    assert r.json()["token_id"] == token_id(keys["run"])
     assert client.get("/api/v1/me").json()["name"] == "run-user"
     assert client.post("/api/v1/jobs", json={"preset": "360p"}).status_code == 403
     bad = client.post("/api/v1/jobs", json={"preset": "360p"}, headers={"Origin": "https://evil"})
@@ -373,9 +503,9 @@ def test_login_session_and_origin(client, keys):
 
 def test_login_rate_limit(client, keys):
     for _ in range(10):
-        r = client.post("/login", json={"key": "mtt_nope_nope"}, headers={"Origin": ORIGIN})
+        r = client.post("/login", json={"token": "mtt1_nope"}, headers={"Origin": ORIGIN})
         assert r.status_code == 401
-    r = client.post("/login", json={"key": keys["run"]}, headers={"Origin": ORIGIN})
+    r = client.post("/login", json={"token": keys["run"]}, headers={"Origin": ORIGIN})
     assert r.status_code == 429
     assert client.get("/api/v1/me", headers=bearer(keys["run"])).status_code == 429
 
@@ -395,10 +525,17 @@ def test_runner_down(tmp_path):
         raise httpx.ConnectError("refused")
 
     settings = Settings(
-        "http://runner", "t", SECRET, tmp_path / "a.sqlite", (ORIGIN,), False, False
+        runner_url="http://runner",
+        runner_token="t",
+        token_secret=TOKEN_SECRET,
+        session_secret=SECRET,
+        db_path=tmp_path / "a.sqlite",
+        public_origins=(ORIGIN,),
+        trust_proxy=False,
+        secure_cookies=False,
     )
     app = create_app(config.load(ROOT), settings, transport=httpx.MockTransport(down))
-    key = auth.new_key(app.state.db, "k", "view")
+    key = mint("k", "view")
     with TestClient(app) as c:
         assert c.get("/healthz").json()["runner"] is False
         assert c.get("/api/v1/jobs", headers=bearer(key)).status_code == 503

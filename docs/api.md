@@ -1,13 +1,16 @@
 # API
 
 The service runs at `https://moq-test.ci.openmoq.org`. Everything except
-`/healthz` and the namespace codec (presets, namespace, decode) needs an API
-key.
+`/healthz` and the namespace codec (presets, namespace, decode) needs a token.
+The [user guide](user-guide.md) walks through using one; operators issue them
+([admin guide](admin.md)).
 
-## Keys
+## Tokens
 
-Keys look like `mtt_<id>_<secret>`. The service operators issue them; open an
-issue in this repository to ask for one. A key has a role and an expiry:
+Tokens look like `mtt1_…` (about 150–200 characters). The service operators
+issue them; open an issue in this repository to ask for one. A token carries
+its holder's role, limits tier, the relays it may publish to, and its expiry;
+`GET /api/v1/token` shows them.
 
 | Role | Can |
 |------|-----|
@@ -15,31 +18,32 @@ issue in this repository to ask for one. A key has a role and an expiry:
 | `run` | `view`, plus check, start and stop its own jobs |
 | `admin` | `run`, plus stop any job and stop all jobs |
 
-Every key gets the per-key limits in `config/policy.yaml` (today: height up to
-1080, up to 60 fps, video up to 8000 kbps, TTL up to 1 h, 16 jobs). A key
-created as unrestricted, or an admin key, may exceed them up to the global
-caps (16 jobs in total, 2 live encodes, TTL up to 24 h).
+A `standard` token gets the per-token limits in `config/policy.yaml` (today:
+height up to 1080, up to 60 fps, video up to 8000 kbps, TTL up to 1 h, 16
+jobs). An `unrestricted` or admin token may exceed them up to the global caps
+(16 jobs in total, 2 live encodes, TTL up to 24 h). A job may only use a
+relay the token grants.
 
-Send the key in a header:
+Send the token in a header:
 
 ```
-Authorization: Bearer mtt_<id>_<secret>
+Authorization: Bearer mtt1_…
 ```
 
-The dashboard exchanges a key for a session cookie at `POST /login`. Query
-strings never carry a key.
+The dashboard exchanges a token for a session cookie of at most 12 hours at
+`POST /login` (`{"token": "mtt1_…"}`). Query strings never carry a token.
 
 ## Endpoints
 
 | Method | Path | Role | Purpose |
 |--------|------|------|---------|
 | GET | `/healthz` | none | Liveness, and whether the runner answers |
-| GET | `/api/v1/me` | view | The calling key: id, name, role |
+| GET | `/api/v1/token` | view | The calling token: id, holder name, role, tier, relays, expiry (also at `/api/v1/me`) |
 | GET | `/api/v1/presets` | none | Presets, fallbacks and parameter names |
 | GET | `/api/v1/namespace?…` | none | Build a namespace from parameters, without starting anything |
 | GET | `/api/v1/namespace/decode?ns=…` | none | Decode a namespace into its fields |
 | GET | `/api/v1/tools` | view | Enabled publisher tools and their capabilities |
-| GET | `/api/v1/relays` | view | The relay allowlist and the default relay |
+| GET | `/api/v1/relays` | view | The relays this token grants, and its default |
 | GET | `/api/v1/clips` | view | Clips, with what has been recorded |
 | POST | `/api/v1/jobs/check` | run | Validate a job and return the tool's plan, without starting it |
 | POST | `/api/v1/jobs` | run | Start a job, or join the running job for the same relay and namespace |
@@ -94,7 +98,7 @@ and frame rate, and the audio bitrate from codec and channels.
 | Param | Values | Default |
 |-------|--------|---------|
 | `tool` | `/api/v1/tools` | `aiomoqt` |
-| `relay` | `/api/v1/relays` | `moqx-main` |
+| `relay` | a relay the token grants, `/api/v1/relays` | `moqx-main` if granted, else the token's first relay |
 | `draft` | a draft the relay speaks | the relay's default |
 | `transport` | `moqt` (raw QUIC) or `webtransport` | `moqt` |
 | `mode` | `publish` or `namespace`, see below | `publish` |
@@ -150,10 +154,10 @@ tuple field.
 
 | Status | Meaning |
 |--------|---------|
-| 401 | no key, or an unknown, expired or revoked one |
-| 403 | the role is too low, a stop by someone other than the owner, or a cross-origin cookie request |
+| 401 | no token, or an invalid, expired or revoked one |
+| 403 | the role is too low, a relay the token does not grant, a stop by someone other than the owner, or a cross-origin cookie request |
 | 422 | invalid parameters or namespace, a relay or draft not allowed, or the tool cannot produce it |
-| 429 | a cap is reached (jobs, live encodes, per-key jobs); retry later |
+| 429 | a cap is reached (jobs, live encodes, per-token jobs); retry later |
 | 503 | the runner is unreachable |
 
 ## Subscribing
@@ -171,9 +175,9 @@ names are `catalog`, `video` and `audio`; ladders and views add `video_1`,
 ## Example
 
 ```sh
-read -rs MTT_KEY
+read -rs MTT_TOKEN
 U=https://moq-test.ci.openmoq.org
-H="Authorization: Bearer $MTT_KEY"
+H="Authorization: Bearer $MTT_TOKEN"
 curl -s -H "$H" "$U/api/v1/namespace?preset=720p30&pkg=cmaf"
 job=$(curl -s -X POST -H "$H" "$U/api/v1/jobs?preset=720p30&ttl=600")
 id=$(echo "$job" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')

@@ -2,7 +2,8 @@
 # This source code is licensed under the Apache 2.0 license found in the
 # LICENSE file in the root directory of this source tree.
 
-# SQLite store for API keys and the audit log.
+# SQLite store for revoked token ids and the audit log. Tokens verify without
+# it; losing it loses revocations and history, not access.
 
 from __future__ import annotations
 
@@ -13,16 +14,11 @@ from contextlib import closing
 from pathlib import Path
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS keys (
+DROP TABLE IF EXISTS keys;
+CREATE TABLE IF NOT EXISTS revoked (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    role TEXT NOT NULL,
-    secret_hash TEXT NOT NULL,
-    created REAL NOT NULL,
-    expires REAL,
-    revoked REAL,
-    last_used REAL,
-    unrestricted INTEGER NOT NULL DEFAULT 0
+    time REAL NOT NULL,
+    reason TEXT
 );
 CREATE TABLE IF NOT EXISTS audit (
     time REAL NOT NULL,
@@ -41,9 +37,6 @@ class Db:
         path.parent.mkdir(parents=True, exist_ok=True)
         with self._lock, closing(self._connect()) as c, c:
             c.executescript(SCHEMA)
-            columns = {r["name"] for r in c.execute("PRAGMA table_info(keys)")}
-            if "unrestricted" not in columns:
-                c.execute("ALTER TABLE keys ADD COLUMN unrestricted INTEGER NOT NULL DEFAULT 0")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=5)

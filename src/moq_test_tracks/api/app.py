@@ -2,8 +2,8 @@
 # This source code is licensed under the Apache 2.0 license found in the
 # LICENSE file in the root directory of this source tree.
 
-# Public API and dashboard. Authenticates callers, applies roles and the
-# namespace prefix rule, and relays job calls to the runner agent.
+# Public API and dashboard. Authenticates callers, applies roles, relay grants
+# and the namespace prefix rule, and relays job calls to the runner agent.
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from ..config import Config
 from ..spec.fields import NamespaceError, TrackSpec
 from ..spec.namespace import decode, encode, from_text, render, to_slash
 from . import auth, presets
-from .auth import LoginLimiter, Principal, Sessions
+from .auth import LoginLimiter, Principal, Sessions, Signer
 from .db import Db
 
 STATIC = Path(__file__).parent / "static"
@@ -42,6 +42,7 @@ SECURITY_HEADERS = {
 class Settings:
     runner_url: str
     runner_token: str
+    token_secret: str
     session_secret: str
     db_path: Path
     public_origins: tuple[str, ...]
@@ -59,6 +60,7 @@ def create_app(
     cfg: Config, settings: Settings, transport: httpx.AsyncBaseTransport | None = None
 ) -> FastAPI:
     db = Db(settings.db_path)
+    signer = Signer(settings.token_secret)
     sessions = Sessions(settings.session_secret, db)
     limiter = LoginLimiter()
     runner = httpx.AsyncClient(
@@ -86,7 +88,7 @@ def create_app(
     def authenticate(request: Request) -> tuple[Principal | None, str | None]:
         header = request.headers.get("authorization", "")
         if header.startswith("Bearer "):
-            return auth.verify(db, header[len("Bearer ") :].strip()), "key"
+            return auth.verify(signer, db, header[len("Bearer ") :].strip()), "token"
         cookie = request.cookies.get(COOKIE)
         if cookie:
             return sessions.verify(cookie), "cookie"
@@ -126,11 +128,22 @@ def create_app(
             raise HTTPException(r.status_code, detail)
         return body
 
-    def owners() -> dict[str, str]:
-        return {k["id"]: k["name"] for k in auth.list_keys(db)}
+    def default_relay(p: Principal) -> str | None:
+        """The service default if the token grants it, else its first relay."""
+        if cfg.default_relay in p.relays:
+            return cfg.default_relay
+        return p.relays[0] if p.relays else None
 
-    def named(job: dict, names: dict[str, str]) -> dict:
-        return {**job, "owner_name": names.get(job.get("owner") or "", job.get("owner"))}
+    def granted_relay(p: Principal, requested: str | None) -> str:
+        relay = requested or default_relay(p)
+        if relay is None:
+            raise HTTPException(403, {"errors": ["this token grants no relays"]})
+        if relay not in p.relays:
+            grants = ", ".join(p.relays)
+            raise HTTPException(
+                403, {"errors": [f"this token may not publish to {relay}; it grants {grants}"]}
+            )
+        return relay
 
     def resolve_namespace(params: dict, preset: str | None, tool: str, clip: str | None):
         """Namespace from a preset and parameters; clip=<id> selects that clip's content."""
@@ -158,9 +171,10 @@ def create_app(
         elif prefix != base:
             raise ValueError(f"the namespace prefix must be {'/'.join(base)}")
 
-    async def job_body(request: Request) -> dict:
+    async def job_body(request: Request, p: Principal) -> dict:
         """Runner request from a JSON body or query parameters: a namespace, or
-        a preset and parameters resolved under the policy prefix for the tool."""
+        a preset and parameters resolved under the policy prefix for the tool,
+        on a relay the token grants."""
         data: dict = {}
         if request.headers.get("content-type", "").startswith("application/json"):
             data = await request.json()
@@ -193,7 +207,7 @@ def create_app(
             body = {
                 "namespace": to_slash(namespace),
                 "tool": tool,
-                "relay": pick("relay") or cfg.default_relay,
+                "relay": granted_relay(p, pick("relay")),
                 "transport": pick("transport") or "moqt",
                 "mode": pick("mode") or "publish",
                 "draft": pick("draft", int),
@@ -211,7 +225,7 @@ def create_app(
             return JSONResponse({"detail": {"errors": ["too many failed authentications"]}}, 429)
         principal, via = authenticate(request)
         if principal is None:
-            if via == "key":  # a stale session cookie is not a guess; don't lock the IP out
+            if via == "token":  # a stale session cookie is not a guess; don't lock the IP out
                 limiter.fail(ip)
             if "text/html" in request.headers.get("accept", ""):
                 return RedirectResponse("/", status_code=302)
@@ -223,7 +237,7 @@ def create_app(
                 return JSONResponse({"detail": {"errors": ["cross-origin request refused"]}}, 403)
         name = re.sub(r"[^A-Za-z0-9_. -]", "_", principal.name)[:64]
         role = "Admin" if principal.can("admin") else "Viewer"
-        headers = {"X-WEBAUTH-USER": f"mtt-{principal.key_id}", "X-WEBAUTH-ROLE": role}
+        headers = {"X-WEBAUTH-USER": f"mtt-{principal.token_id}", "X-WEBAUTH-ROLE": role}
         return Response(headers={**headers, "X-WEBAUTH-NAME": name})
 
     @app.get("/healthz")
@@ -248,22 +262,21 @@ def create_app(
         if request.headers.get("origin") not in settings.public_origins:
             raise HTTPException(403, {"errors": ["cross-origin request refused"]})
         try:
-            key = (await request.json()).get("key", "")
+            token = (await request.json()).get("token", "")
         except (json.JSONDecodeError, AttributeError):
-            key = ""
-        principal = auth.verify(db, key) if isinstance(key, str) else None
+            token = ""
+        principal = auth.verify(signer, db, token) if isinstance(token, str) else None
         if principal is None:
             limiter.fail(ip)
             db.audit("login_failed", None, ip)
-            raise HTTPException(401, {"errors": ["invalid key"]})
-        db.audit("login", principal.key_id, ip)
-        response = JSONResponse(
-            {"key_id": principal.key_id, "name": principal.name, "role": principal.role}
-        )
+            raise HTTPException(401, {"errors": ["invalid, expired or revoked token"]})
+        db.audit("login", principal.token_id, ip)
+        cookie, max_age = sessions.issue(principal)
+        response = JSONResponse(principal.info())
         response.set_cookie(
             COOKIE,
-            sessions.issue(principal),
-            max_age=auth.SESSION_TTL_S,
+            cookie,
+            max_age=max_age,
             httponly=True,
             secure=settings.secure_cookies,
             samesite="strict",
@@ -277,9 +290,10 @@ def create_app(
         response.delete_cookie(COOKIE, path="/")
         return response
 
+    @app.get("/api/v1/token")
     @app.get("/api/v1/me")
     async def me(p: Principal = as_view) -> dict:
-        return {"key_id": p.key_id, "name": p.name, "role": p.role}
+        return p.info()
 
     @app.get("/api/v1/presets")
     async def list_presets() -> dict:
@@ -330,54 +344,59 @@ def create_app(
 
     @app.get("/api/v1/relays")
     async def relays(p: Principal = as_view) -> dict:
+        """The relays this token grants."""
         return {
-            "default": cfg.default_relay,
+            "default": default_relay(p),
             "relays": [
                 {"id": r.id, "name": r.name, "endpoints": r.endpoints, "drafts": list(r.drafts)}
                 for r in cfg.relays.values()
+                if r.id in p.relays
             ],
         }
 
     @app.post("/api/v1/jobs/check")
     async def check(request: Request, p: Principal = as_run) -> dict:
-        body = {**await job_body(request), "unrestricted": p.exempt}
+        body = {**await job_body(request, p), "unrestricted": p.exempt}
         return await call_runner("POST", "/check", json=body)
 
     @app.post("/api/v1/jobs", status_code=201)
     async def start(request: Request, p: Principal = as_run) -> dict:
-        body = {**await job_body(request), "owner": p.key_id, "unrestricted": p.exempt}
+        body = {
+            **await job_body(request, p),
+            "owner": p.token_id,
+            "owner_name": p.name,
+            "unrestricted": p.exempt,
+        }
         job = await call_runner("POST", "/jobs", json=body)
         action = "job_joined" if job.get("joined") else "job_started"
-        db.audit(action, p.key_id, client_ip(request), f"{job['id']} {job['namespace']}")
-        return named(job, owners())
+        db.audit(action, p.token_id, client_ip(request), f"{job['id']} {job['namespace']}")
+        return job
 
     @app.get("/api/v1/jobs")
     async def jobs(active: bool = False, p: Principal = as_view) -> list[dict]:
-        names = owners()
-        rows = await call_runner("GET", "/jobs", params={"active": str(active).lower()})
-        return [named(j, names) for j in rows]
+        return await call_runner("GET", "/jobs", params={"active": str(active).lower()})
 
     @app.get("/api/v1/jobs/{job_id}")
     async def job(job_id: str, p: Principal = as_view) -> dict:
-        return named(await call_runner("GET", f"/jobs/{job_id}"), owners())
+        return await call_runner("GET", f"/jobs/{job_id}")
 
     @app.delete("/api/v1/jobs/{job_id}")
     async def stop(
         job_id: str, request: Request, force: bool = False, p: Principal = as_run
     ) -> dict:
         current = await call_runner("GET", f"/jobs/{job_id}")
-        if current.get("owner") != p.key_id and not p.can("admin"):
+        if current.get("owner") != p.token_id and not p.can("admin"):
             raise HTTPException(403, {"errors": ["only the job's owner or an admin can stop it"]})
         result = await call_runner(
             "DELETE", f"/jobs/{job_id}", params={"force": str(force).lower()}
         )
-        db.audit("job_killed" if force else "job_stopped", p.key_id, client_ip(request), job_id)
-        return named(result, owners())
+        db.audit("job_killed" if force else "job_stopped", p.token_id, client_ip(request), job_id)
+        return result
 
     @app.post("/api/v1/admin/stop-all")
     async def stop_all(request: Request, p: Principal = as_admin) -> dict:
         result = await call_runner("POST", "/stop-all")
-        db.audit("stop_all", p.key_id, client_ip(request), str(result.get("stopped")))
+        db.audit("stop_all", p.token_id, client_ip(request), str(result.get("stopped")))
         return result
 
     @app.get("/api/v1/jobs/{job_id}/events")
