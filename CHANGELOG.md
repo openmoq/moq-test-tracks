@@ -11,6 +11,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Added
 
+- CI tiers: every pull request runs ruff and the unit tests; `ci main` (push to main, nightly, and pull requests that change the image or the tier) adds thorough property tests with coverage, a build of the service image with its pins checked, and end-to-end tests that publish real jobs through a local aiomoqt-relay inside the image (`tests/e2e`, `MTT_E2E=1`). Each run writes a results summary to its Actions page.
 - Relay `us-ord-3`: moqx at `us-ord-3.moqx.akaleapi.net`, port 443, raw QUIC and WebTransport (`/moq-relay`), drafts 16 and 18.
 - The aiomoqt adapter accepts catalog `none` (`--no-catalog`), init data `track` and `object` (`--init-data`), and datagram audio over WebTransport.
 - Namespace codec for `moq_test_tracks_00` and `moq-test-00`, with the MoQT name representation, and the `mtt ns encode|decode|render` command.

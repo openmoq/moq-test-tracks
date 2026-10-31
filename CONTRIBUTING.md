@@ -75,6 +75,29 @@ Before submitting:
 3. Add tests; bug fixes include a regression test. Namespace codec changes
    include encode/decode round-trip cases.
 
+## CI tiers
+
+Each run writes a results summary (counts, failures, slowest tests) to its
+Actions page.
+
+| Workflow | When | Runs |
+|----------|------|------|
+| `ci pr` | every pull request | ruff, unit tests |
+| `ci main` | push to main, nightly, by hand; pull requests that change `docker/`, `tests/e2e/` or the workflow | ruff; unit tests with `HYPOTHESIS_PROFILE=thorough` and coverage; the service image, its pins against the manifest, and end-to-end tests inside it |
+
+The end-to-end tests (`tests/e2e`, marker `e2e`, deselected by default) run
+real `mtt run` jobs through a local aiomoqt-relay and check each track with a
+subscriber: group sizes, datagram audio, the catalog, End of Track and
+PUBLISH_DONE. They need aiomoqt, ffmpeg and openssl, and opt in with
+`MTT_E2E=1`, which also trusts the relay's self-signed cert by appending it
+to certifi's bundle for the run. The easiest place to run them is the image:
+
+```sh
+docker build -f docker/Dockerfile -t mtt:ci .
+docker run --rm --user 0 --entrypoint sh -e MTT_E2E=1 -v "$PWD:/src:ro" mtt:ci \
+  -c 'pip install -q pytest && cd /src && python -m pytest -q -p no:cacheprovider -m e2e tests/e2e'
+```
+
 ## The draft
 
 The namespace encoding is specified by draft-marzot-moq-test-tracks, kept
