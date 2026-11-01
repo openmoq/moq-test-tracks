@@ -86,8 +86,8 @@ def plan(req, python=sys.executable):
     notes = []
     if f["catalog"] == "none":
         notes.append(
-            "decoder config rides VIDEO_CONFIG / AUDIO_CONFIG on each group's first object,"
-            " not in the media itself"
+            "decoder config rides VIDEO_CONFIG / AUDIO_CONFIG on each group's first object;"
+            " H.264 and H.265 also carry their parameter sets in the payload"
         )
     return {"accept": True, "source": source, "argv": argv, "notes": notes}
 
