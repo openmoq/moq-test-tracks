@@ -11,10 +11,13 @@ import math
 from fractions import Fraction
 from pathlib import Path
 
-from ..spec.fields import AUDIO_SAMPLE_RATE, TrackSpec
+from ..spec.fields import AUDIO_FRAME_SAMPLES, AUDIO_SAMPLE_RATE, TrackSpec
 
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 LOOP_TARGET_S = 60
+LOOP_MAX_S = 300
+# Encoder delay in samples, which the mp4 carries as extra leading audio.
+AUDIO_PRIMING = {"aac": 1024, "opus": 120}
 
 FORMATS = ("mpegts", "mp4")
 
@@ -115,13 +118,33 @@ def _audio_encoder(spec: TrackSpec) -> list[str]:
     raise RecipeError(f"no encoder for audio codec {spec.audio_codec}")
 
 
+def _lcm(a: Fraction, b: Fraction) -> Fraction:
+    return Fraction(
+        math.lcm(a.numerator * b.denominator, b.numerator * a.denominator),
+        a.denominator * b.denominator,
+    )
+
+
 def loop_seconds(spec: TrackSpec, target: int | None = None) -> Fraction:
-    """Loop length near target (default LOOP_TARGET_S) that is a whole number of video groups."""
-    target = target or LOOP_TARGET_S
-    if spec.group_ms is None:
-        return Fraction(target)
-    groups = math.ceil(target * 1000 / spec.group_ms)
-    return Fraction(groups * spec.group_ms, 1000)
+    """Loop length of whole video groups and whole audio groups, so both tracks keep their
+    cadence across the seam: the longest within target (default LOOP_TARGET_S, which a clip
+    sets to its window), else one unit. When that unit exceeds LOOP_MAX_S, whole video
+    groups only."""
+    target = Fraction(target or LOOP_TARGET_S)
+    units = []
+    if spec.group_ms is not None:
+        units.append(Fraction(spec.group_ms, 1000))
+    if spec.has_audio and spec.audio_frames_per_group:
+        samples = spec.audio_frames_per_group * AUDIO_FRAME_SAMPLES[spec.audio_codec]
+        units.append(Fraction(samples, AUDIO_SAMPLE_RATE))
+    if not units:
+        return target
+    unit = units[0]
+    for u in units[1:]:
+        unit = _lcm(unit, u)
+    if unit > LOOP_MAX_S:
+        unit = units[0]
+    return unit * max(1, math.floor(target / unit))
 
 
 def source_command(
@@ -157,7 +180,15 @@ def source_command(
     argv += inputs + maps + encoders
     if live:
         argv += ["-f", "mpegts", "-muxdelay", "0", "-muxpreload", "0", str(output)]
-    else:
-        seconds = loop_seconds(spec, (clip or {}).get("loop_s"))
-        argv += ["-t", f"{float(seconds):.3f}", "-movflags", "+faststart", "-f", "mp4", str(output)]
+        return argv
+    seconds = loop_seconds(spec, (clip or {}).get("loop_s"))
+    if spec.has_video:
+        argv += ["-video_track_timescale", str(spec.video_timing().timescale)]
+    if spec.has_audio:
+        # Stamped by sample count, as a mezzanine's millisecond timestamps leave
+        # uneven frame durations; shortened by the priming so that, with it, the
+        # track spans exactly the loop.
+        samples = int(seconds * AUDIO_SAMPLE_RATE) - AUDIO_PRIMING[spec.audio_codec]
+        argv += ["-filter:a", f"atrim=end_sample={samples},asetpts=N/SR/TB"]
+    argv += ["-t", f"{float(seconds):.3f}", "-movflags", "+faststart", "-f", "mp4", str(output)]
     return argv

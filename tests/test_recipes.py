@@ -89,9 +89,42 @@ def test_mp4_loop_is_whole_groups():
     assert "-re" not in argv
     seconds = Fraction(_value(argv, "-t"))
     assert (
-        seconds == loop_seconds(_spec(frame_rate="29_97", group_ms=2002)) == Fraction(60060, 1000)
+        seconds == loop_seconds(_spec(frame_rate="29_97", group_ms=2002)) == Fraction(64064, 1000)
     )
-    assert (seconds * 1000) % 2002 == 0
+    assert (seconds * 1000) % 2002 == 0 and (seconds * 48000) % 1024 == 0
+
+
+@pytest.mark.parametrize(
+    "changes, target, seconds",
+    [
+        ({}, None, 56),  # 2 s groups and 1024-sample frames: whole 8 s
+        ({"audio_codec": "opus"}, None, 60),  # 20 ms frames divide 2 s groups
+        ({"audio_delivery": 7}, None, 56),
+        ({}, 150, 144),  # a clip window: the longest loop that fits
+        ({}, 5, 8),  # never less than one unit
+        ({"audio_codec": "none", "audio_channels": None, "audio_delivery": None}, None, 60),
+        ({"video_codec": "none", "video_height": None, "frame_rate": None, "group_ms": None,
+          "video_tracks": None}, None, Fraction(1024 * 2812, 48000)),
+        ({"frame_rate": "7", "group_ms": 1000, "audio_delivery": 97}, None, 60),  # unit > max
+    ],
+)  # fmt: skip
+def test_loop_is_whole_video_and_audio_groups(changes, target, seconds):
+    assert loop_seconds(_spec(**changes), target) == seconds
+
+
+def test_mp4_timescales_and_audio_timing():
+    argv = source_command(_spec(), "mp4", "o.mp4")
+    assert _value(argv, "-video_track_timescale") == "30000"
+    assert _value(argv, "-filter:a") == f"atrim=end_sample={56 * 48000 - 1024},asetpts=N/SR/TB"
+    ntsc = source_command(_spec(frame_rate="29_97", group_ms=2002), "mp4", "o.mp4")
+    assert _value(ntsc, "-video_track_timescale") == "30000"
+    assert _value(source_command(_spec(frame_rate="60"), "mp4", "o.mp4"), "-r") == "60/1"
+    assert _value(source_command(_spec(frame_rate="60"), "mp4", "o.mp4"),
+                  "-video_track_timescale") == "60000"  # fmt: skip
+    opus = source_command(_spec(audio_codec="opus"), "mp4", "o.mp4")
+    assert _value(opus, "-filter:a").startswith(f"atrim=end_sample={60 * 48000 - 120},")
+    live = source_command(_spec(), "mpegts", "o.ts")
+    assert "-video_track_timescale" not in live and "-filter:a" not in live
 
 
 def test_clip_needs_mezzanine():
@@ -112,10 +145,10 @@ def test_clip_encodes_the_mezzanine_to_the_shape():
     assert graph.startswith("fps=30/1,scale=1280:720:force_original_aspect_ratio=decrease")
     assert "pad=1280:720" in graph and "text='Demo credit'" in graph
     assert _value(argv, "-c:v") == "libx264" and _value(argv, "-g") == "60"
-    assert _value(argv, "-c:a") == "aac" and _value(argv, "-t") == "60.000"
+    assert _value(argv, "-c:a") == "aac" and _value(argv, "-t") == "56.000"
     live = source_command(_spec(content="clip"), "mpegts", "o.ts", CLIP)
     assert live[live.index("-stream_loop") - 1] == "-re"
     other = source_command(_spec(content="clip"), "mp4", "o.mp4", {**CLIP, "path": "/x.mkv"})
     assert other != argv  # a new recording gets a new cache key
     long = source_command(_spec(content="clip"), "mp4", "o.mp4", {**CLIP, "loop_s": 150})
-    assert _value(long, "-t") == "150.000"
+    assert _value(long, "-t") == "144.000"

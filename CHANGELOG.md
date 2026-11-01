@@ -61,6 +61,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Fixed
 
+- Cached loops carry the draft's timing on the mp4 path. Video uses the draft's timescale (30000 at 30 fps, not ffmpeg's 15360), audio is mapped at 48000 Hz instead of an explicit timestamp on every object, and audio no longer drifts from video by one frame each pass. A loop is now a whole number of video and audio groups within its target (56 s by default, 144 s for the 150 s Artemis II clips), so existing loops are rendered again on their next use.
 - The aiomoqt adapter's note for catalog `none` says that H.264 and H.265 carry their parameter sets in the payload, besides the VIDEO_CONFIG / AUDIO_CONFIG object property.
 - `mtt keys list` shows an expired key as `expired`, not `active` (authentication already refused it), and lists each key's expiry in UTC.
 - A stop or kill that arrives while a job's tool is starting or restarting is no longer lost; before, the job kept publishing until its TTL, or past it after a kill.
