@@ -88,7 +88,7 @@ def test_no_catalog():
     p = adapter.plan(_request(catalog="none", init_data=None))
     assert p["accept"] and "--no-catalog" in p["argv"] and "--init-data" not in p["argv"]
     assert "--target-latency" not in p["argv"]
-    assert "not in the media itself" in p["notes"][0]
+    assert "parameter sets in the payload" in p["notes"][0]
 
 
 def test_cmaf_leaves_init_data_to_the_catalog():

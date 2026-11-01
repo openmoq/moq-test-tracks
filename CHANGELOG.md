@@ -61,6 +61,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Fixed
 
+- The aiomoqt adapter's note for catalog `none` says that H.264 and H.265 carry their parameter sets in the payload, besides the VIDEO_CONFIG / AUDIO_CONFIG object property.
 - `mtt keys list` shows an expired key as `expired`, not `active` (authentication already refused it), and lists each key's expiry in UTC.
 - A stop or kill that arrives while a job's tool is starting or restarting is no longer lost; before, the job kept publishing until its TTL, or past it after a kill.
 - Jobs that need the same mp4 loop source no longer render it concurrently into one temporary file, which failed all but one job and could leave a corrupt file in the cache. One render runs per cache entry; each render writes its own temporary file and is checked before it replaces the entry, and an incomplete cached file is rendered again.
