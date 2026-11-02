@@ -16,6 +16,11 @@ NA = "_"
 
 GENERATED = ("clock", "bars", "noise")
 CONTENTS = (*GENERATED, "clip")  # for clip, tuple field 1 is the clip id
+# Field 1 values the draft reserves for later revisions; never clip ids
+RESERVED = (
+    *("black", "motion", "zoneplate", "ramp", "sweep", "silence", "sync", "scroll"),
+    *("clip", "none", "any", "all", "default", "test", "live", "random"),
+)
 CATALOGS = ("msf", "none")
 PACKAGINGS = ("loc", "cmaf", "locmaf")
 VIDEO_CODECS = ("h264", "h264cb", "h265", "av1", "none")
