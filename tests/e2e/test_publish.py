@@ -186,7 +186,9 @@ def test_publish(shape, root, relay, tmp_path, record_property):
         complete = t.complete_groups()
         assert complete and set(complete) == {spec.frames_per_group}, (t.name, complete)
         assert len(set(t.groups) & set(video.groups)) >= 3, (t.name, sorted(t.groups))
-        assert t.end_of_track == video.end_of_track, (t.name, t.end_of_track)
+        # A timed end can fall between the tracks' copies of one frame.
+        (group, obj), (vgroup, vobj) = t.end_of_track, video.end_of_track
+        assert group == vgroup and abs(obj - vobj) <= 1, (t.name, t.end_of_track)
     if spec.audio_datagram:
         assert audio.datagrams == audio.objects
     else:
