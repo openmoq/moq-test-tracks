@@ -143,7 +143,7 @@ at 2160p.
 | Event | Data |
 |-------|------|
 | `state` | `{"state": …, "exit_code": …}` |
-| `event` | the tool's status: `ready`, `stats` (per-track objects, groups, kbps), `endpoint_lost`, `endpoint_up`, `done`; and the service's `restart` (`attempt`, `delay_s`, `exit_code`) |
+| `event` | the tool's status: `ready`, `anchor` (`start_us`, the capture time of the first group, and each track's timescale and multipliers), `stats` (per-track objects, groups, kbps), `endpoint_lost`, `endpoint_up`, `done`; and the service's `restart` (`attempt`, `delay_s`, `exit_code`) |
 | `log` | one line of the tool's log |
 
 A restart of the service itself still ends running jobs, and their records

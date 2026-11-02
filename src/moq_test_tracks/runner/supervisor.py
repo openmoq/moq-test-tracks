@@ -31,6 +31,8 @@ EXIT_INTERNAL = 70
 
 CHECK_TIMEOUT_S = 30
 SOURCE_GRACE_S = 2
+# A live source starts this far ahead: the tool's start-up, source read and relay setup.
+START_LEAD_S = 5
 EVENT_PREFIX = "@mtt "
 
 # One render per cache key at a time; jobs that need the same loop wait for it.
@@ -53,6 +55,13 @@ class CheckResult:
 def _killpg(pid: int, sig: int) -> None:
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(pid, sig)
+
+
+def start_us(group_ms: int, now_us: int | None = None) -> int:
+    """The first video group boundary since the Unix epoch, in µs, START_LEAD_S or more ahead."""
+    group_us = group_ms * 1000
+    earliest = (now_us if now_us is not None else time.time_ns() // 1000) + START_LEAD_S * 10**6
+    return -(-earliest // group_us) * group_us
 
 
 def mp4_complete(path: Path) -> bool:
@@ -180,7 +189,10 @@ class Job:
             with contextlib.suppress(FileNotFoundError):
                 fifo.unlink()
             os.mkfifo(fifo)
-            argv = recipes.source_command(self.spec, "mpegts", fifo, self.request.get("clip"))
+            start = start_us(self.spec.group_ms) if self.spec.group_ms else None
+            argv = recipes.source_command(
+                self.spec, "mpegts", fifo, self.request.get("clip"), start_us=start
+            )
             log = (self.dir / "ffmpeg.log").open("ab")
             self._source = await asyncio.create_subprocess_exec(
                 *argv,
@@ -191,7 +203,9 @@ class Job:
                 preexec_fn=self._preexec,
             )
             self._record(self._source)
-            self.request["source"] = {"format": fmt, "path": str(fifo), "fifo": True, "loop": False}
+            self.request["source"] = {
+                "format": fmt, "path": str(fifo), "fifo": True, "loop": False, "start_us": start,
+            }  # fmt: skip
             return
         if fmt == "mp4":
             clip = self.request.get("clip")

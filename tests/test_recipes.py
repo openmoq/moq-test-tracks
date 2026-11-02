@@ -99,32 +99,44 @@ def test_mp4_loop_is_whole_groups():
     [
         ({}, None, 56),  # 2 s groups and 1024-sample frames: whole 8 s
         ({"audio_codec": "opus"}, None, 60),  # 20 ms frames divide 2 s groups
-        ({"audio_delivery": 7}, None, 56),
+        ({"audio_delivery": 7}, None, 56),  # audio groups may straddle the seam
+        ({"audio_delivery": 41}, None, 56),
         ({}, 150, 144),  # a clip window: the longest loop that fits
         ({}, 5, 8),  # never less than one unit
         ({"audio_codec": "none", "audio_channels": None, "audio_delivery": None}, None, 60),
         ({"video_codec": "none", "video_height": None, "frame_rate": None, "group_ms": None,
           "video_tracks": None}, None, Fraction(1024 * 2812, 48000)),
-        ({"frame_rate": "7", "group_ms": 1000, "audio_delivery": 97}, None, 60),  # unit > max
+        ({"frame_rate": "24", "group_ms": 9875}, None, Fraction(237, 4)),  # unit > max
     ],
 )  # fmt: skip
-def test_loop_is_whole_video_and_audio_groups(changes, target, seconds):
+def test_loop_is_whole_video_groups_and_audio_frames(changes, target, seconds):
     assert loop_seconds(_spec(**changes), target) == seconds
 
 
 def test_mp4_timescales_and_audio_timing():
     argv = source_command(_spec(), "mp4", "o.mp4")
     assert _value(argv, "-video_track_timescale") == "30000"
-    assert _value(argv, "-filter:a") == f"atrim=end_sample={56 * 48000 - 1024},asetpts=N/SR/TB"
+    assert _value(argv, "-filter:a") == "asetpts=N/SR/TB"
     ntsc = source_command(_spec(frame_rate="29_97", group_ms=2002), "mp4", "o.mp4")
     assert _value(ntsc, "-video_track_timescale") == "30000"
     assert _value(source_command(_spec(frame_rate="60"), "mp4", "o.mp4"), "-r") == "60/1"
     assert _value(source_command(_spec(frame_rate="60"), "mp4", "o.mp4"),
                   "-video_track_timescale") == "60000"  # fmt: skip
-    opus = source_command(_spec(audio_codec="opus"), "mp4", "o.mp4")
-    assert _value(opus, "-filter:a").startswith(f"atrim=end_sample={60 * 48000 - 120},")
     live = source_command(_spec(), "mpegts", "o.ts")
     assert "-video_track_timescale" not in live and "-filter:a" not in live
+
+
+def test_clock_shows_the_mapped_time():
+    # 12:40:06.002 UTC: the flash and the beep fall on the whole seconds of that time.
+    argv = source_command(
+        _spec(frame_rate="29_97", group_ms=2002), "mpegts", "o.ts", start_us=1793623206002000
+    )
+    video, audio = (argv[i + 1] for i, a in enumerate(argv) if a == "-i")
+    assert "text='%{pts\\:hms\\:45606.002000\\:24HH} f %{n}'" in video
+    assert "enable='lt(mod(t+0.002000,1),0.033367)'" in video
+    assert "if(lt(mod(t+0.002000\\,1)\\,0.1)" in audio
+    wall = source_command(_spec(), "mpegts", "o.ts")
+    assert "text='%{gmtime\\:%T} f %{n}'" in wall[wall.index("-i") + 1]
 
 
 def test_clip_needs_mezzanine():

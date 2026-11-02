@@ -123,7 +123,8 @@ No secrets are ever passed to a tool.
   ],
   "mode": "namespace",
   "ttl_s": 1800,
-  "source": {"format": "mpegts", "path": "/work/j_7f3a9c/source.ts", "fifo": true, "loop": false},
+  "source": {"format": "mpegts", "path": "/work/j_7f3a9c/source.ts", "fifo": true, "loop": false,
+             "start_us": 1793623206000000},
   "clip": null,
   "tls": {"verify": true, "ca_file": null}
 }
@@ -142,7 +143,9 @@ No secrets are ever passed to a tool.
   `attribution` in the picture, as the shared recipes do.
 - **`source`** is the media the service prepared, in the format check mode
   asked for ([Source media](#source-media)). It is `null` when check mode
-  asked for none. In check mode itself, `source` is always `null`.
+  asked for none. In check mode itself, `source` is always `null`. A live
+  source with video has `start_us`: the capture time of its first frame, in
+  µs since the Unix epoch, on a video group boundary.
 
 ## What the tool must publish
 
@@ -210,8 +213,10 @@ These rules hold for every tool. They restate the draft operationally.
     `29_97` and `59_94`), Object Multiplier 1000 (1001 for those rates);
   - audio: timescale 48000, Object Multiplier = samples per frame (1024 for
     AAC, 960 for Opus);
-  - Group Multiplier = Objects per Group × Object Multiplier; Base Group =
-    first Group ID; Base Timestamp = capture time of its first Object.
+  - Group Multiplier = Objects per Group × Object Multiplier; Base Group and
+    Base Timestamp 0, so a Group ID is the capture time in timescale ticks
+    since the Unix epoch ÷ Group Multiplier. A track starts on a group
+    boundary: `source.start_us` for a live source.
 - An Object whose capture time differs from its mapped timestamp carries
   OBJECT_TIMESTAMP with the correction. On schedule, no per-Object timing
   is sent.
@@ -254,10 +259,12 @@ values. Every source format guarantees:
 | `annexb` | two FIFOs, live: `video_path` (Annex B) and `audio_path` (ADTS AAC or Ogg Opus) | For tools that take elementary streams. A path is `null` when the namespace has no video or no audio. |
 | `fmp4` | FIFO, live | An init segment, then one moof+mdat per frame (CMAF chunks) |
 | `flv` | FIFO, live | H.264 + AAC only |
-| `mp4` | file, `loop: true` | Non-fragmented and not interleaved. Its length is a whole number of video and audio groups, so the tool can loop it seamlessly. Cached and shared between jobs. |
+| `mp4` | file, `loop: true` | Non-fragmented and not interleaved. Its length is a whole number of video groups and of audio frames, so the tool can loop it seamlessly. Cached and shared between jobs. |
 
 For a live source, the service starts ffmpeg writing to the FIFO before
 starting the adapter. The FIFO only produces data while the tool reads it.
+`start_us` is at least 5 s ahead, for the tool's start-up and relay setup;
+the `clock` content shows that capture time, not the time it was rendered.
 
 ## Check mode
 

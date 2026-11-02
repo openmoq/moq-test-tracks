@@ -20,7 +20,7 @@ from moq_test_tracks import config
 from moq_test_tracks.config import Relay, Tool, job_errors
 from moq_test_tracks.content import recipes
 from moq_test_tracks.runner.request import build
-from moq_test_tracks.runner.supervisor import EXIT_OK, Job, mp4_complete
+from moq_test_tracks.runner.supervisor import EXIT_OK, START_LEAD_S, Job, mp4_complete, start_us
 from moq_test_tracks.spec import decode, from_slash
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -218,9 +218,27 @@ def test_environment_is_reset(fake_tool, tmp_path, monkeypatch):
 @needs_ffmpeg
 def test_live_source_fifo(fake_tool, tmp_path):
     job = _job(fake_tool, tmp_path, source="mpegts")
+    before = time.time_ns() // 1000
     _, _, logs = _collect(job, stop_after=0.2)
-    assert job.request["source"]["fifo"] is True
+    src = job.request["source"]
+    assert src["fifo"] is True
+    assert src["start_us"] % 1_000_000 == 0  # 1 s groups
+    assert before + START_LEAD_S * 10**6 <= src["start_us"] <= before + (START_LEAD_S + 2) * 10**6
     assert any(line.startswith("read ") and line != "read 0" for line in logs)
+
+
+@pytest.mark.parametrize(
+    "group_ms, now_us, start",
+    [
+        (2000, 1_000_000_000_000, 1_000_006_000_000),  # boundary + lead: the next one
+        (2000, 999_998_999_999, 1_000_004_000_000),
+        (2002, 1_000_000_000_000, 1_000_005_006_000),  # 29.97 groups: multiples of 2.002 s
+        (1000, 1_000_000_000_000, 1_000_005_000_000),
+    ],
+)
+def test_start_us_is_a_group_boundary_past_the_lead(group_ms, now_us, start):
+    assert start_us(group_ms, now_us) == start
+    assert start % (group_ms * 1000) == 0 and start - now_us >= START_LEAD_S * 10**6
 
 
 @needs_ffmpeg
