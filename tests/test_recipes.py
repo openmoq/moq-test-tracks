@@ -164,3 +164,58 @@ def test_clip_encodes_the_mezzanine_to_the_shape():
     assert other != argv  # a new recording gets a new cache key
     long = source_command(_spec(content="clip"), "mp4", "o.mp4", {**CLIP, "loop_s": 150})
     assert _value(long, "-t") == "144.000"
+
+
+SET = "p/mtt_00/clock/loc/h264/720/30/aac/2/msf/catalog/2000/1/0/"
+
+
+def _set(tracks, **changes):
+    return dataclasses.replace(decode(from_slash(SET + tracks)).spec, **changes)
+
+
+def test_live_set_carries_every_video_track():
+    spec = _set("alt3")
+    argv = source_command(spec, "mpegts", "o.ts", start_us=1793623206000000)
+    graphs = [argv[i + 1] for i, a in enumerate(argv) if a == "-i"]
+    assert len(graphs) == 4 and graphs[3].startswith("aevalsrc")
+    assert all("testsrc2=size=1280x720" in g for g in graphs[:3])  # one picture, scaled
+    assert (
+        "scale" not in graphs[0] and "scale=960:540" in graphs[1] and "scale=640:360" in graphs[2]
+    )
+    assert [g.rsplit("text=", 1)[1] for g in graphs[:3]] == ["'720p'", "'540p'", "'360p'"]
+    assert argv[argv.index("-map") :].count("-map") == 4
+    assert [_value(argv, f"-b:v:{i}") for i in range(3)] == ["2500k", "1500k", "600k"]
+    assert [_value(argv, f"-g:v:{i}") for i in range(3)] == ["60"] * 3
+    assert _value(argv, "-c:v:2") == "libx264" and "-b:v" not in argv
+
+
+def test_views_are_pictures_of_their_own():
+    graphs = [g for g in source_command(_set("view3"), "mpegts", "o.ts") if "testsrc2" in g]
+    assert [("hue=h=0" in g, "hue=h=120" in g, "hue=h=240" in g) for g in graphs] == [
+        (True, False, False), (False, True, False), (False, False, True),
+    ]  # fmt: skip
+    assert [g.rsplit("text=", 1)[1] for g in graphs] == ["'view 1'", "'view 2'", "'view 3'"]
+    noise = source_command(_set("view2", content="noise"), "mpegts", "o.ts")
+    assert [g.count("all_seed=") for g in noise if "noise=" in g] == [1, 1]
+    assert "all_seed=0" in noise[noise.index("-i") + 1] and "all_seed=1" in " ".join(noise)
+
+
+def test_set_mp4_holds_one_track():
+    spec = _set("alt2", packaging="cmaf")
+    with pytest.raises(RecipeError, match="its own mp4"):
+        source_command(spec, "mp4", "o.mp4")
+    first, second = (source_command(spec, "mp4", "o.mp4", track=t) for t in spec.video_set())
+    assert "-c:a" in first and "-filter:a" in first
+    assert "-c:a" not in second and "-filter:a" not in second
+    assert _value(first, "-b:v") == "2500k" and _value(second, "-b:v") == "1500k"
+    assert _value(first, "-t") == _value(second, "-t")
+    assert "%{pts" in first[first.index("-i") + 1]  # the loop position, the same in both
+
+
+def test_clip_ladder_scales_the_mezzanine():
+    spec = _set("alt2", content="clip", clip="film", packaging="cmaf")
+    clip = {"path": "/m/film.mp4", "attribution": "Film"}
+    argv = source_command(spec, "mp4", "o.mp4", clip, track=spec.video_set()[1])
+    assert "scale=960:540" in _value(argv, "-filter:v") and "-c:a" not in argv
+    with pytest.raises(RecipeError, match="mp4 loops"):
+        source_command(spec, "mpegts", "o.ts", clip)

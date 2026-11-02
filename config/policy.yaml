@@ -4,7 +4,7 @@ namespace_prefix: [openmoq]  # tool id is appended
 
 global:
   max_jobs: 16
-  max_live_encodes: 2  # the CPU guard: live encodes cost cores, cached loops do not
+  max_live_encodes: 2  # the CPU guard: one per live video track; cached loops cost none
   max_ttl_s: 86400
 
 per_key_defaults:

@@ -188,6 +188,8 @@ class Registry:
         clip = self.cfg.clips.get(spec.clip or "")
         if clip is None:
             raise Rejected(422, [f"unknown clip {spec.clip}"])
+        if spec.is_views:
+            raise Rejected(422, [f"clip {clip.id} has one view"])
         mezz = media.mezzanine(self.cache, clip.id)
         if mezz is None:
             raise Rejected(
@@ -256,9 +258,11 @@ class Registry:
                 raise Rejected(429, [f"this token is at its limit of {limit} jobs"])
         job = self._job(body, tool, relay, namespace, spec, draft, ttl, clip, self.work)
         check = await self._adapter_check(job)
-        live = sum(1 for e in active if e.check.source == "mpegts")
-        if check.source == "mpegts" and live >= cfg.policy.max_live_encodes:
-            limit = cfg.policy.max_live_encodes
+        live = sum(_live_encodes(e.check, e.job.spec) for e in active)
+        need, limit = _live_encodes(check, spec), cfg.policy.max_live_encodes
+        if need > limit:
+            raise Rejected(429, [f"{need} live encodes exceed the runner's limit of {limit}"])
+        if need and live + need > limit:
             raise Rejected(429, [f"the runner is at its limit of {limit} live encodes"])
         entry = Entry(
             job, namespace, relay.id, body.owner, time.time(), check, owner_name=body.owner_name
@@ -341,8 +345,8 @@ class Registry:
         metric("mtt_jobs", "gauge", "Active jobs by state.",
                [({"state": s}, states.get(s, 0)) for s in ACTIVE])  # fmt: skip
         metric("mtt_jobs_limit", "gauge", "Global job cap.", [({}, policy.max_jobs)])
-        live = sum(e.check.source == "mpegts" for e in active)
-        metric("mtt_live_encodes", "gauge", "Active jobs encoding live.", [({}, live)])
+        live = sum(_live_encodes(e.check, e.job.spec) for e in active)
+        metric("mtt_live_encodes", "gauge", "Active live encodes.", [({}, live)])
         metric(
             "mtt_live_encodes_limit", "gauge", "Live encode cap.", [({}, policy.max_live_encodes)]
         )
@@ -389,6 +393,11 @@ class Registry:
         finished = [e for e in self.jobs.values() if not e.active]
         for e in sorted(finished, key=lambda e: e.created)[:-FINISHED_KEEP]:
             del self.jobs[e.id]
+
+
+def _live_encodes(check: CheckResult, spec: TrackSpec) -> int:
+    """Live encodes a job runs: one per video track, or one for audio alone."""
+    return max(1, len(spec.video_track_names)) if check.source == "mpegts" else 0
 
 
 def _send_rates(prev: dict | None, cur: dict) -> dict[str, float]:

@@ -3,7 +3,7 @@ contract_version: 2
 id: aiomoqt
 name: aiomoqt pub_media
 repository: https://github.com/gmarzot/aiomoqt
-version: 0.14.0
+version: 0.15.0.dev1033+g7dee6b1
 protocols: [mtt_00]
 sources: [mpegts, mp4]
 stop:
@@ -16,7 +16,6 @@ capabilities:
   video_codec: [h264, h264cb, h265, av1, none]
   audio_codec: [aac, opus, none]
   audio_delivery_mode: [stream, dgram]
-  video_tracks: ["1"]
   transport: [moqt, webtransport]
   datagram_transport: [moqt, webtransport]
   draft: [14, 16, 18, 20, 22]

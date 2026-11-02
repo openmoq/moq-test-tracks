@@ -241,10 +241,9 @@ def job_errors(
             errors.append(f"height {spec.video_height} exceeds the cap {policy.max_height}")
         if spec.fps is not None and spec.fps > Fraction(policy.max_fps):
             errors.append(f"frame rate {spec.frame_rate} exceeds the cap {policy.max_fps}")
-        if spec.video_kbps is not None and spec.video_kbps > policy.max_video_kbps:
-            errors.append(
-                f"video bitrate {spec.video_kbps} exceeds the cap {policy.max_video_kbps}"
-            )
+        kbps = spec.total_video_kbps
+        if kbps is not None and kbps > policy.max_video_kbps:
+            errors.append(f"video bitrate {kbps} exceeds the cap {policy.max_video_kbps}")
     max_ttl = policy.global_max_ttl_s if unrestricted else policy.max_ttl_s
     if not 1 <= ttl_s <= max_ttl:
         errors.append(f"ttl {ttl_s} s is outside 1-{max_ttl}")

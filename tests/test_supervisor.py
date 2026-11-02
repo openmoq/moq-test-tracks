@@ -288,7 +288,14 @@ def fake_render(tmp_path, monkeypatch):
     monkeypatch.setattr(
         recipes,
         "source_command",
-        lambda spec, fmt, out, clip=None: [sys.executable, "-c", script, str(out), str(counter)],
+        lambda spec, fmt, out, clip=None, track=None: [
+            sys.executable,
+            "-c",
+            script,
+            str(out),
+            str(counter),
+            str(track and track.track),
+        ],
     )
     return counter
 
@@ -358,3 +365,25 @@ def test_job_errors(fake_tool):
         )  # fmt: skip
     )
     assert "exceeds" not in admin and "ttl" not in admin
+
+
+def test_set_renders_one_mp4_per_track(fake_tool, tmp_path, fake_render):
+    job = _job(fake_tool, tmp_path, video_tracks="alt2", video_height=360)
+    asyncio.run(job._prepare_source("mp4"))
+    src = job.request["source"]
+    assert len(src["paths"]) == 2 and src["paths"][0] == src["path"]
+    assert len(set(src["paths"])) == 2 and fake_render.read_text() == "r\nr\n"
+    single = _job(fake_tool, tmp_path)
+    asyncio.run(single._prepare_source("mp4"))
+    assert single.request["source"]["paths"] == [single.request["source"]["path"]]
+
+
+def test_bitrate_cap_counts_every_video_track(fake_tool):
+    spec = decode(from_slash(NS)).spec
+    policy = config.Policy(("openmoq",), 1800, 3600, 720, 30, 4000)
+    ladder = dataclasses.replace(spec, video_height=720, video_tracks="alt3")
+    errors = job_errors(
+        fake_tool, RELAY, ladder, mode="namespace", transport="moqt", draft=18, ttl_s=60,
+        policy=policy,
+    )  # fmt: skip
+    assert errors == ["video bitrate 4600 exceeds the cap 4000"]

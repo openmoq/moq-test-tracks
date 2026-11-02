@@ -155,6 +155,11 @@ def _video_tracks(token: str) -> str:
     return token
 
 
+def width_of(height: int) -> int:
+    """16:9 width, even."""
+    return 2 * round(height * 16 / 9 / 2)
+
+
 def default_group_ms(frame_rate: str) -> int:
     """Group duration when tuple field 10 is omitted: whole frames nearest 2 s."""
     return 2002 if frame_rate in FRACTIONAL_RATES else 2000
@@ -208,6 +213,17 @@ class Timing:
     timescale: int
     object_multiplier: int
     group_multiplier: int
+
+
+@dataclass(frozen=True)
+class VideoTrack:
+    """One video track of a set (draft §Several Video Tracks)."""
+
+    track: str
+    width: int
+    height: int
+    kbps: int
+    label: str | None  # catalog label; None for a single video track
 
 
 @dataclass(frozen=True)
@@ -278,11 +294,36 @@ class TrackSpec:
             heights.append(max(lower))
         return tuple(heights)
 
+    def video_set(self) -> tuple[VideoTrack, ...]:
+        """The video tracks in Track Name order; empty without video or when a ladder does not
+        fit."""
+        names = self.video_track_names
+        heights = self.ladder() if self.is_ladder else (self.video_height,) * len(names)
+        if not names or heights is None or self.video_height is None:
+            return ()
+        if len(names) == 1:
+            labels = [None]
+        elif self.is_ladder:
+            labels = [f"{h}p" for h in heights]
+        else:
+            labels = [f"view {i}" for i in range(1, len(names) + 1)]
+        return tuple(
+            VideoTrack(n, width_of(h), h, self.kbps_at(h), label)
+            for n, h, label in zip(names, heights, labels, strict=True)
+        )
+
+    @property
+    def total_video_kbps(self) -> int | None:
+        """Target bitrate of all video tracks together."""
+        if self.video_height is None:
+            return None
+        return sum(t.kbps for t in self.video_set()) or self.video_kbps
+
     @property
     def video_width(self) -> int | None:
         if self.video_height is None:
             return None
-        return 2 * round(self.video_height * 16 / 9 / 2)
+        return width_of(self.video_height)
 
     @property
     def fps(self) -> Fraction | None:

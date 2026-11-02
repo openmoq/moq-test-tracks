@@ -193,6 +193,22 @@ def test_ladder_and_views():
     assert views.video_track_names == ("video", "video_1", "video_2", "video_3")
 
 
+def test_video_set():
+    ladder = decode(_ns(DRAFT_EXAMPLES[5])).spec.video_set()
+    assert [(t.track, t.width, t.height, t.kbps, t.label) for t in ladder] == [
+        ("video", 1920, 1080, 4500, "1080p"),
+        ("video_1", 1280, 720, 2500, "720p"),
+        ("video_2", 960, 540, 1500, "540p"),
+    ]
+    views = decode(_ns(DRAFT_EXAMPLES[6])).spec
+    assert [t.label for t in views.video_set()] == ["view 1", "view 2", "view 3", "view 4"]
+    assert {t.height for t in views.video_set()} == {720}
+    assert views.total_video_kbps == 4 * 2500
+    (one,) = _base().video_set()
+    assert one.track == "video" and one.label is None
+    assert _base(video_codec="none", video_height=None, frame_rate=None).video_set() == ()
+
+
 def test_draft_rendered_example():
     namespace = _ns(BASE)
     assert render(namespace, "video") == DRAFT_RENDERED

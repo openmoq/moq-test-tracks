@@ -43,6 +43,8 @@ SHAPES = {
     "dgram_audio": "clock/loc/h264/360/30/aac/2/msf/catalog/2000/dgram",
     "audio_4_per_group": "clock/loc/h264/360/30/aac/2/msf/catalog/2000/4",
     "no_catalog": "clock/loc/h264/360/30/aac/2/none",
+    "ladder_alt3": "clock/loc/h264/540/30/aac/2/msf/catalog/2000/1/0/alt3",
+    "views_view2": "clock/cmaf/h264/360/30/aac/2/msf/catalog/2000/1/0/view2",
 }
 
 
@@ -151,7 +153,7 @@ def test_publish(shape, root, relay, tmp_path, record_property):
     decoded = decode(from_slash(f"{PREFIX}/{VERSION}/{SHAPES[shape]}"))
     spec = dataclasses.replace(decoded.spec, duration_s=DURATION_S)
     namespace = to_slash(encode(spec, decoded.prefix))
-    names = ["video", "audio"] + (["catalog"] if spec.catalog != "none" else [])
+    names = [*spec.video_track_names, "audio"] + (["catalog"] if spec.catalog != "none" else [])
 
     job = Job(root, namespace, tmp_path / "jobs")
     try:
@@ -180,8 +182,11 @@ def test_publish(shape, root, relay, tmp_path, record_property):
             continue  # a datagram End of Track may be lost; PUBLISH_DONE carries the end
         assert t.end_of_track is not None, f"{t.name}: no End of Track"
         assert t.end_of_track[0] in (max(t.groups), max(t.groups) + 1), (t.name, t.end_of_track)
-    complete = video.complete_groups()
-    assert complete and set(complete) == {spec.frames_per_group}, complete
+    for t in (tracks[n] for n in spec.video_track_names):
+        complete = t.complete_groups()
+        assert complete and set(complete) == {spec.frames_per_group}, (t.name, complete)
+        assert len(set(t.groups) & set(video.groups)) >= 3, (t.name, sorted(t.groups))
+        assert t.end_of_track == video.end_of_track, (t.name, t.end_of_track)
     if spec.audio_datagram:
         assert audio.datagrams == audio.objects
     else:
@@ -189,6 +194,15 @@ def test_publish(shape, root, relay, tmp_path, record_property):
         assert set(audio.complete_groups()) == {spec.audio_frames_per_group}
     if "catalog" in tracks:
         catalog = json.loads(tracks["catalog"].first_payload)
-        assert {"video", "audio"} <= {t["name"] for t in catalog["tracks"]}, catalog
+        listed = {t["name"]: t for t in catalog["tracks"]}
+        assert {*spec.video_track_names, "audio"} <= set(listed), catalog
+        video_set = spec.video_set()
+        if len(video_set) > 1:
+            assert [listed[t.track].get("label") for t in video_set] == [
+                t.label for t in video_set
+            ], catalog
+            groups = [listed[t.track].get("altGroup") for t in video_set]
+            assert None not in groups, catalog
+            assert len(set(groups)) == (1 if spec.is_ladder else len(groups)), groups
     if spec.packaging == "cmaf":
         assert b"moof" in video.first_payload[:512]

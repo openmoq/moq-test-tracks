@@ -171,8 +171,6 @@ def test_namespace_mode():
     [
         ({"content": "clip"}, "content"),
         ({"packaging": "cmaf", "audio_delivery": "dgram"}, "audio_delivery"),
-        ({"video_tracks": "view2"}, "video_tracks"),
-        ({"video_height": 1080, "video_tracks": "alt3"}, "video_tracks"),
     ],
 )
 def test_refuses(kwargs, field):
@@ -230,3 +228,35 @@ def test_check_mode_process(tmp_path):
         r = subprocess.run([str(ADAPTER)], env=env, capture_output=True, text=True)
         assert r.returncode == code
         assert json.loads(r.stdout)["accept"] is (code == 0)
+
+
+def _flags(argv, flag):
+    return [argv[i + 1] for i, a in enumerate(argv) if a == flag]
+
+
+def test_live_ladder():
+    req = _request(video_height=720, video_tracks="alt3")
+    req["source"] = {"format": "mpegts", "path": "/j/s.ts", "start_us": 1793623206000000}
+    p = adapter.plan(req, python="py")
+    argv = p["argv"]
+    assert p["accept"] and p["source"] == "mpegts" and _flags(argv, "--ts") == ["/j/s.ts"]
+    assert _flags(argv, "--video-alt") == ["one"]
+    assert _flags(argv, "--video-label") == ["720p", "540p", "360p"]
+    assert _flags(argv, "--catalog-bitrate") == ["2500000", "1500000", "600000"]
+
+
+def test_views_from_mp4_loops():
+    req = _request(packaging="cmaf", video_tracks="view2")
+    req["source"] = {"format": "mp4", "path": "/c/a.mp4", "paths": ["/c/a.mp4", "/c/b.mp4"]}
+    argv = adapter.plan(req, python="py")["argv"]
+    assert _flags(argv, "--mp4") == ["/c/a.mp4", "/c/b.mp4"] and "--loop" in argv
+    assert _flags(argv, "--video-alt") == ["each"]
+    assert _flags(argv, "--video-label") == ["view 1", "view 2"]
+    check = adapter.plan(_request(packaging="cmaf", video_tracks="view3"))["argv"]
+    assert _flags(check, "--mp4") == ["<source>"] * 3
+
+
+def test_one_video_track_has_no_set_flags():
+    argv = adapter.plan(_request(), python="py")["argv"]
+    assert "--video-alt" not in argv and "--video-label" not in argv
+    assert _flags(argv, "--catalog-bitrate") == ["600000"]

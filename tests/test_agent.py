@@ -4,6 +4,7 @@
 
 # Runner agent API against the fake adapter.
 
+import dataclasses
 import json
 import subprocess
 import sys
@@ -17,6 +18,8 @@ from test_supervisor import FAKE_ADAPTER
 from moq_test_tracks import config
 from moq_test_tracks.runner import agent
 from moq_test_tracks.runner.agent import create_app, sweep_orphans
+from moq_test_tracks.runner.supervisor import CheckResult
+from moq_test_tracks.spec import decode, from_slash
 
 TOKEN = "t0ken"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
@@ -354,3 +357,22 @@ def test_sweep_kills_only_owned_groups(tmp_path):
     finally:
         stranger.kill()
         owned.kill()
+
+
+def test_live_encodes_count_every_video_track():
+    spec = decode(from_slash(NS)).spec
+    live, loop = CheckResult(True, "mpegts"), CheckResult(True, "mp4")
+    ladder = dataclasses.replace(spec, video_height=720, video_tracks="alt3")
+    assert agent._live_encodes(live, spec) == 1 and agent._live_encodes(live, ladder) == 3
+    assert agent._live_encodes(loop, ladder) == 0
+    no_video = dataclasses.replace(
+        spec, video_codec="none", video_height=None, frame_rate=None, group_ms=None,
+        video_tracks=None,
+    )  # fmt: skip
+    assert agent._live_encodes(live, no_video) == 1
+
+
+def test_clip_views_are_refused(client):
+    views = {**_job(), "namespace": f"{CLIP_NS}/1/0/view2"}
+    r = client.post("/check", json=views, headers=AUTH)
+    assert r.status_code == 422 and "clip demo has one view" in r.text

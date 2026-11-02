@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 from ..config import CONTRACT_VERSION, Relay
 from ..spec.fields import VERSION, TrackSpec
 from ..spec.namespace import Namespace, render
@@ -55,6 +57,7 @@ def build(
         "namespace_safe": render(namespace),
         "tracks": list(spec.tracks),
         "fields": fields_dict(spec),
+        "video": [dataclasses.asdict(t) for t in spec.video_set()],
         "endpoints": [{"url": relay.endpoints[transport], "transport": transport, "draft": draft}],
         "mode": mode,
         "ttl_s": ttl_s,
