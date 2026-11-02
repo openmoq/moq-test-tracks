@@ -10,6 +10,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from fractions import Fraction
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,7 +19,7 @@ from test_supervisor import FAKE_ADAPTER
 from moq_test_tracks import config
 from moq_test_tracks.runner import agent
 from moq_test_tracks.runner.agent import create_app, sweep_orphans
-from moq_test_tracks.runner.supervisor import CheckResult
+from moq_test_tracks.runner.supervisor import CheckResult, Job
 from moq_test_tracks.spec import decode, from_slash
 
 TOKEN = "t0ken"
@@ -359,17 +360,52 @@ def test_sweep_kills_only_owned_groups(tmp_path):
         owned.kill()
 
 
-def test_live_encodes_count_every_video_track():
+def test_live_load_is_the_video_pixel_rate():
     spec = decode(from_slash(NS)).spec
     live, loop = CheckResult(True, "mpegts"), CheckResult(True, "mp4")
-    ladder = dataclasses.replace(spec, video_height=720, video_tracks="alt3")
-    assert agent._live_encodes(live, spec) == 1 and agent._live_encodes(live, ladder) == 3
-    assert agent._live_encodes(loop, ladder) == 0
-    no_video = dataclasses.replace(
-        spec, video_codec="none", video_height=None, frame_rate=None, group_ms=None,
-        video_tracks=None,
-    )  # fmt: skip
-    assert agent._live_encodes(live, no_video) == 1
+
+    def load(check=live, **changes):
+        return agent._live_encodes(check, dataclasses.replace(spec, **changes))
+
+    assert load(video_height=1080) == 1 and load(video_height=1080, frame_rate="60") == 2
+    assert load(video_height=720, group_ms=2000, video_tracks="view4") == Fraction(16, 9)
+    assert load(video_height=1080, group_ms=2000, video_tracks="alt3") == 1 + Fraction(
+        4, 9
+    ) + Fraction(1, 4)
+    assert load(loop, video_height=1080, group_ms=2000, video_tracks="alt3") == 0
+    assert load() == Fraction(1, 4)  # 180p30 is under the floor
+    no_video = dict(video_codec="none", video_height=None, frame_rate=None, group_ms=None)
+    assert load(**no_video, video_tracks=None) == Fraction(1, 4)
+
+
+SETS = "openmoq/fake/mtt_00/clock/loc/h264/{}/30/aac/2/msf/catalog/2000/1/0/{}"
+
+
+def test_live_load_cap(root, monkeypatch):
+    async def live_check(self, job):
+        return CheckResult(True, "mpegts", ["fake"])
+
+    async def no_source(self, fmt):
+        self.request["source"] = None
+
+    monkeypatch.setattr(agent.Registry, "_adapter_check", live_check)
+    monkeypatch.setattr(Job, "_prepare_source", no_source)
+    (root / "config" / "policy.yaml").write_text(
+        "namespace_prefix: [openmoq]\nglobal: {max_jobs: 8, max_live_encodes: 4}\n"
+    )
+    app = create_app(config.load(root), token=TOKEN, work=root / "var" / "jobs", cache=root / "c")
+    with TestClient(app) as c:
+
+        def post(namespace, **extra):
+            return c.post("/jobs", json={**_job(), "namespace": namespace, **extra}, headers=AUTH)
+
+        assert post(SETS.format(1080, "alt3")).status_code == 201  # 1.69
+        assert post(SETS.format(720, "view4")).status_code == 201  # 1.78
+        full = post(NS.replace("/180/", "/1080/"))  # 1.0 more
+        assert full.status_code == 429 and "3.47 in use, this job needs 1.00" in full.text
+        big = post(SETS.format(2160, "alt7"), unrestricted=True)
+        assert big.status_code == 422 and "7.61 live encodes exceed" in big.text
+        c.post("/stop-all", headers=AUTH)
 
 
 def test_clip_views_are_refused(client):

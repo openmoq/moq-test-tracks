@@ -4,7 +4,9 @@ namespace_prefix: [openmoq]  # tool id is appended
 
 global:
   max_jobs: 16
-  max_live_encodes: 2  # the CPU guard: one per live video track; cached loops cost none
+  # The CPU guard, in 1080p30 encodes: a live job counts its video tracks' pixel
+  # rate (720p30 0.44, 1080p60 2), at least 0.25. Cached loops count nothing.
+  max_live_encodes: 4
   max_ttl_s: 86400
 
 per_key_defaults:
@@ -13,7 +15,7 @@ per_key_defaults:
   max_ttl_s: 3600
   max_height: 1080
   max_fps: 60
-  max_video_kbps: 8000
+  max_video_kbps: 16000  # all of a job's video tracks together
 
 rate_limits:
   api_per_min: 60

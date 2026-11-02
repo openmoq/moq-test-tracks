@@ -220,8 +220,8 @@ values.
   sample count; the tool skips the encoder's priming by the edit list. It is stored as
   `/cache/<sha256>.mp4` with LRU eviction by size. This is much cheaper than
   live encoding.
-- **Slots:** live encodes have their own pool, smaller than the job pool. A
-  job uses one per video track.
+- **Slots:** live encodes have their own pool, counted in 1080p30 encodes by
+  the pixel rate of a job's video tracks.
 
 ### Real media (`clip`)
 

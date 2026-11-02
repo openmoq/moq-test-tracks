@@ -56,7 +56,7 @@ class Policy:
     max_fps: int
     max_video_kbps: int
     max_jobs: int = 6
-    max_live_encodes: int = 2
+    max_live_encodes: float = 4
     global_max_ttl_s: int = 86400
     key_max_jobs: int = 2
 
@@ -189,9 +189,9 @@ def load(root: Path | None = None) -> Config:
         max_ttl_s=int(per_key.get("max_ttl_s", 3600)),
         max_height=int(per_key.get("max_height", 1080)),
         max_fps=int(per_key.get("max_fps", 60)),
-        max_video_kbps=int(per_key.get("max_video_kbps", 8000)),
+        max_video_kbps=int(per_key.get("max_video_kbps", 16000)),
         max_jobs=int(caps.get("max_jobs", 6)),
-        max_live_encodes=int(caps.get("max_live_encodes", 2)),
+        max_live_encodes=float(caps.get("max_live_encodes", 4)),
         global_max_ttl_s=int(caps.get("max_ttl_s", 86400)),
         key_max_jobs=int(per_key.get("max_jobs", 2)),
     )
