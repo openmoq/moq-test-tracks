@@ -5,8 +5,8 @@ FROM python:3.12-slim-bookworm AS build
 WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-ARG AIOMOQT="aiomoqt==0.14.0rc1"
-ARG AIOPQUIC="aiopquic==0.7.0rc3"
+ARG AIOMOQT="aiomoqt==0.14.0"
+ARG AIOPQUIC="aiopquic==0.7.0"
 RUN pip wheel --no-cache-dir --wheel-dir /wheels . "${AIOMOQT}" "${AIOPQUIC}"
 
 FROM python:3.12-slim-bookworm

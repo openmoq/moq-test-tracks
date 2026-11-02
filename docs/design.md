@@ -202,7 +202,7 @@ Filter graphs and encoder arguments are built only from validated field
 values.
 
 - **Content:**
-  - `clock`: testsrc2 with drawtext overlays (wall clock, frame and group),
+  - `clock`: testsrc2 with drawtext overlays (capture time on a live source, frame and group),
     plus a tone with a one-second beep and flash;
   - `bars`: smptehdbars with 1 kHz;
   - `noise`: a noise source and anoisesrc.
@@ -214,10 +214,10 @@ values.
   `-sc_threshold 0`, realtime presets, and `-b:v -maxrate -bufsize`.
 - **Loop cache:** for `mp4` sources, a file of up to 60 s is rendered once
   per (video, audio, content) combination. Its length is a whole number of
-  video groups and of audio groups (8 s units at 2 s groups and 1024-sample
-  AAC frames), so both tracks keep their cadence across the seam. Video uses
-  the draft's timescale (1000 × fps), and audio timestamps follow the sample
-  count, shortened by the encoder's priming so each pass spans the loop. It is stored as
+  video groups and of audio frames (8 s units at 2 s groups and 1024-sample
+  AAC frames), so both tracks stay on their frame grid across the seam. Video
+  uses the draft's timescale (1000 × fps), and audio timestamps follow the
+  sample count; the tool skips the encoder's priming by the edit list. It is stored as
   `/cache/<sha256>.mp4` with LRU eviction by size. This is much cheaper than
   live encoding.
 - **Slots:** live encodes have their own pool, smaller than the job pool.

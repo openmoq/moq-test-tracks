@@ -56,19 +56,20 @@ def plan(req, python=sys.executable):
     # Clips encode once into a cached loop; only synthetic LOC H.264 encodes live.
     live = packaging == "loc" and f["video_codec"] in ("h264", "h264cb") and f["content"] != "clip"
     source = "mpegts" if live else "mp4"
-    path = (req.get("source") or {}).get("path", "<source>")
-    duration = f["duration_s"] or req["ttl_s"]
+    src = req.get("source") or {}
+    path = src.get("path", "<source>")
     argv = [python, "-u", "-m", "aiomoqt.tools.pub_media"]
     argv += [e["url"] for e in endpoints]
     argv += ["-N", "/".join(req["namespace"]), "--draft", str(endpoints[0]["draft"])]
-    argv += ["-t", str(duration), "--forward", "1", "--stats", "2", "--stats-json"]
+    argv += ["-t", str(f["duration_s"] or 0), "--forward", "1", "--stats", "2", "--stats-json"]
     argv += ["--timestamp-mapping", "--reconnect", "--fetch-history", str(_fetch_history(f))]
     argv.append("--pub-ns" if req["mode"] == "namespace" else "--pub-both")
     if not req["tls"].get("verify", True):
         argv.append("-k")
     if live:
         argv += ["--ts", path, "--ts-cadence", _cadence(f)]
-        argv += ["--catalog-bitrate", str(f["video_kbps"] * 1000)]
+        if src.get("start_us") is not None:
+            argv += ["--start-at", str(src["start_us"])]
     else:
         argv += ["--mp4", path, "--loop", "--packaging", packaging]
     if f["catalog"] == "none":
@@ -77,6 +78,10 @@ def plan(req, python=sys.executable):
         argv += ["--target-latency", str(TARGET_LATENCY_MS)]
         if packaging == "loc":
             argv += ["--init-data", f["init_data"]]
+        if f["video_codec"] != "none":
+            argv += ["--catalog-bitrate", str(f["video_kbps"] * 1000)]
+        if has_audio:
+            argv += ["--catalog-audio-bitrate", str(f["audio_kbps"] * 1000)]
     if not has_audio:
         argv.append("--no-audio")
     else:

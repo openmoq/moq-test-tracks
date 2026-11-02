@@ -13,15 +13,15 @@ publishes but does not encode, so the service supplies the source media.
 | `namespace` | `-N` joined with `/` (fields contain no `/`) |
 | `mode` | `namespace`: `--pub-ns` · `publish`: `--pub-both` |
 | FORWARD | `--forward 1` (pub_media defaults to 0) |
-| `ttl_s`, `duration_s` | `-t` = `duration_s` if > 0, else `ttl_s` |
+| `duration_s` | `-t duration_s`; 0 runs until the service stops it at `ttl_s` |
 | Timing (draft §Timing) | `--timestamp-mapping` |
-| packaging `loc`, video `h264` / `h264cb` | source `mpegts` → `--ts <fifo> --ts-cadence fps=N[/D],gop=M --catalog-bitrate <video bps>` |
+| packaging `loc`, video `h264` / `h264cb` | source `mpegts` → `--ts <fifo> --ts-cadence fps=N[/D],gop=M --start-at <source start_us>` |
 | other `loc` video; `cmaf`, `locmaf`; content `clip` | source `mp4` → `--mp4 <file> --loop --packaging loc\|cmaf\|locmaf` |
 | audio delivery `N` | `--audio-frames-per-group N` |
 | audio delivery `dgram` | `--audio-frames-per-group 1 -D` (LOC only) |
 | audio codec `none` | `--no-audio` |
 | catalog `none` | `--no-catalog` |
-| catalog `msf` | `--target-latency 250` |
+| catalog `msf` | `--target-latency 250 --catalog-bitrate <video bps> --catalog-audio-bitrate <audio bps>` |
 | init data, `loc` | `--init-data catalog\|track\|object` |
 | relay lost mid-run, or a GOAWAY | `--reconnect` (redials at once on GOAWAY) |
 | FETCH (draft §Publisher Behavior) | `--fetch-history <bytes>`: two groups of the larger track at its bitrate, at least 64 KiB; a paused track keeps its open group |

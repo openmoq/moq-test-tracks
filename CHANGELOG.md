@@ -31,6 +31,10 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Changed
 
+- aiomoqt 0.14.0 on aiopquic 0.7.0, with its epoch-anchored timing.
+  - **Live start:** the runner picks each live run's start, the first video group boundary at least 5 s ahead, and passes it to ffmpeg and to the tool as `source.start_us` (pub_media `--start-at`). Restarts pick a new one. The clock content shows that capture time, with the flash and beep on its whole seconds.
+  - **Loops:** cached loops are whole video groups and whole audio frames (audio groups may cross the seam), and keep the encoder priming, which the tool skips by the edit list.
+  - **Adapter:** `-t 0` when duration is 0, so pub_media runs until the service stops it at the TTL; `--catalog-bitrate` and `--catalog-audio-bitrate` on every catalog. `anchor` events report the start and each track's timing.
 - The ffmpeg adapter's tool id is `ffmpeg` (was `ffmpeg_moq`), so its namespaces start `openmoq/ffmpeg/`. It is not enabled yet.
 - **Breaking:** namespaces follow the draft's `mtt_00` layout.
   - **Version field:** `mtt_00` replaces `moq_test_tracks_00`. A namespace with the old version field is refused with an error that gives the new layout. The adapter manifests list `protocols: [mtt_00]`. moq-test-00 is unchanged.

@@ -48,13 +48,15 @@ def test_loc_h264_is_live_ts():
     assert argv[4] == "moqt://relay:4433"
     assert argv[argv.index("-N") + 1] == NS
     assert argv[argv.index("--draft") + 1] == "18"
-    assert argv[argv.index("-t") + 1] == "30"
+    assert argv[argv.index("-t") + 1] == "0"  # until stopped: the runner holds the TTL
     assert argv[argv.index("--forward") + 1] == "1"
     assert "--pub-both" in argv and argv[argv.index("--ts") + 1] == "<source>"
     assert "-D" not in argv and "--no-audio" not in argv
     assert "--timestamp-mapping" in argv and "--stats-json" in argv and "--reconnect" in argv
     assert argv[argv.index("--ts-cadence") + 1] == "fps=30,gop=60"
     assert argv[argv.index("--catalog-bitrate") + 1] == "600000"
+    assert argv[argv.index("--catalog-audio-bitrate") + 1] == "128000"
+    assert "--start-at" not in argv  # check mode has no source yet
     assert argv[argv.index("--init-data") + 1] == "catalog" and "--no-catalog" not in argv
     assert argv[argv.index("--target-latency") + 1] == "250"
     assert argv[argv.index("--fetch-history") + 1] == "300000"  # 2 groups of 2 s at 600 kbps
@@ -84,10 +86,36 @@ def test_fractional_rate_cadence():
     assert argv[argv.index("--ts-cadence") + 1] == "fps=30000/1001,gop=60"
 
 
+def test_live_source_start():
+    req = _request()
+    req["source"] = {"format": "mpegts", "path": "/w/source.ts", "fifo": True, "loop": False,
+                     "start_us": 1793623206000000}  # fmt: skip
+    argv = adapter.plan(req)["argv"]
+    assert argv[argv.index("--ts") + 1] == "/w/source.ts"
+    assert argv[argv.index("--start-at") + 1] == "1793623206000000"
+
+
+@pytest.mark.parametrize(
+    "changes, video, audio",
+    [
+        ({"packaging": "cmaf"}, "600000", "128000"),
+        ({"video_codec": "none"}, None, "128000"),
+        (NO_AUDIO, "600000", None),
+    ],
+)
+def test_catalog_bitrates(changes, video, audio):
+    argv = adapter.plan(_request(**changes))["argv"]
+
+    def flag(name):
+        return argv[argv.index(name) + 1] if name in argv else None
+
+    assert flag("--catalog-bitrate") == video and flag("--catalog-audio-bitrate") == audio
+
+
 def test_no_catalog():
     p = adapter.plan(_request(catalog="none", init_data=None))
     assert p["accept"] and "--no-catalog" in p["argv"] and "--init-data" not in p["argv"]
-    assert "--target-latency" not in p["argv"]
+    assert "--target-latency" not in p["argv"] and "--catalog-bitrate" not in p["argv"]
     assert "parameter sets in the payload" in p["notes"][0]
 
 
