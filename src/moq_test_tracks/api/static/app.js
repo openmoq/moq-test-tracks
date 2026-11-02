@@ -48,7 +48,6 @@ function jobRequest() {
   const ttl = $("ttl").value.trim();
   return {
     preset: $("preset").value || undefined,
-    clip: $("clip").value || undefined,
     params: params(),
     tool: $("tool").value,
     relay: $("relay").value,
@@ -61,7 +60,6 @@ function jobRequest() {
 async function preview() {
   const q = new URLSearchParams({ ...params(), tool: $("tool").value });
   if ($("preset").value) q.set("preset", $("preset").value);
-  if ($("clip").value) q.set("clip", $("clip").value);
   $("plan").hidden = true;
   try {
     const r = await api("GET", "/api/v1/namespace?" + q);
@@ -208,8 +206,8 @@ async function showApp() {
   $("tool").replaceChildren(...tools.map((t) => new Option(`${t.name} (${t.version})`, t.id)));
   $("relay").replaceChildren(...relays.relays.map((r) => new Option(r.name, r.id, false, r.id === relays.default)));
   $("preset").replaceChildren(new Option("(none)", ""), ...Object.keys(presets.presets).map((p) => new Option(p, p)));
-  $("clip").replaceChildren(
-    new Option("(none)", ""),
+  $("clips").hidden = !clips.length;
+  $("clips").replaceChildren(
     ...clips.map((c) => {
       const opt = new Option(c.fetched ? c.title : `${c.title} (not fetched)`, c.id);
       opt.disabled = !c.fetched;

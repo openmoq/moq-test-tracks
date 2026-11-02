@@ -437,26 +437,57 @@ def test_superseded_namespace_names_mtt_00(client, keys):
 
 def test_clip_namespaces(client, keys):
     run = bearer(keys["run"])
-    r = client.get("/api/v1/namespace", params={"clip": "nasa_tv", "h": "720"}, headers=run)
+    r = client.get("/api/v1/namespace", params={"content": "nasa_tv", "h": "720"}, headers=run)
     assert r.status_code == 200
     ns = r.json()["namespace"]
     assert ns == "openmoq/aiomoqt/mtt_00/nasa_tv/loc/h264/720/30/aac/2"
     decoded = client.get("/api/v1/namespace/decode", params={"ns": ns}).json()["fields"]
     assert (decoded["content"], decoded["clip"]) == ("clip", "nasa_tv")
-    by_content = client.get("/api/v1/namespace", params={"content": "nasa_tv", "h": "720"})
-    assert by_content.json()["namespace"] == ns
     assert client.post("/api/v1/jobs", json={"namespace": ns}, headers=run).status_code == 201
-    assert client.post("/api/v1/jobs", json={"clip": "nasa_tv"}, headers=run).status_code == 201
+    started = client.post("/api/v1/jobs", json={"params": {"content": "nasa_tv"}}, headers=run)
+    assert started.status_code == 201
     for bad, text in (
-        ({"clip": "bogus"}, "unknown clip bogus"),
-        ({"params": {"content": "clip"}}, "needs clip=<id>"),
-        ({"clip": "nasa_tv", "params": {"content": "bars"}}, "needs content clip"),
+        ({"params": {"content": "bogus"}}, "unknown clip bogus"),
         ({"namespace": ns.replace("/nasa_tv/", "/bogus/")}, "unknown clip bogus"),
         ({"namespace": ns.replace("openmoq/", "openmoq/nasa_tv/")}, "prefix must be"),
     ):
         r = client.post("/api/v1/jobs", json=bad, headers=run)
         assert r.status_code == 422 and text in r.text, (bad, r.text)
     assert client.get("/api/v1/clips", headers=bearer(keys["view"])).json()[0]["id"] == "nasa_tv"
+
+
+@pytest.mark.parametrize(
+    "path, request_kw",
+    [
+        ("/api/v1/jobs", {"json": {"clip": "nasa_tv"}}),
+        ("/api/v1/jobs", {"json": {"params": {"clip": "nasa_tv"}}}),
+        ("/api/v1/jobs?clip=nasa_tv", {}),
+        ("/api/v1/jobs/check?clip=nasa_tv", {}),
+        ("/api/v1/namespace?clip=nasa_tv", {}),
+    ],
+)
+def test_clip_parameter_is_refused(client, keys, path, request_kw):
+    method = client.get if path.startswith("/api/v1/namespace") else client.post
+    r = method(path, headers=bearer(keys["run"]), **request_kw)
+    assert r.status_code == 422 and "clip: use content=<clip id>" in r.text, r.text
+
+
+@pytest.mark.parametrize("path", ["/api/v1/namespace", "/api/v1/jobs"])
+def test_content_clip_is_refused(client, keys, path):
+    method = client.get if path == "/api/v1/namespace" else client.post
+    r = method(path, params={"content": "clip"}, headers=bearer(keys["run"]))
+    assert r.status_code == 422 and "content takes the clip id" in r.text, r.text
+
+
+def test_cli_run_takes_the_clip_id_as_content(tmp_path, capsys):
+    shape = "--pkg loc --vc h264 --h 720 --fps 30 --ac aac --ch 2".split()
+    run = ["run", "--root", str(ROOT), "--work", str(tmp_path), "--dry-run", *shape]
+    assert main([*run, "--content", "clip"]) == 2
+    assert "--content takes the clip id" in capsys.readouterr().err
+    assert main([*run, "--content", "bogus"]) == 2
+    assert "clip bogus is not configured and fetched" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        main([*run, "--content", "clip", "--clip", "nasa_tv"])
 
 
 def test_grafana_forward_auth(client, keys):

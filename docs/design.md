@@ -146,13 +146,13 @@ Query parameters:
 | `ch` | 7 channels | | | |
 
 Bitrates follow from height and frame rate, and from codec and channels
-(draft §Bitrates). The parameters `vbr`, `abr`, `vfwd`, `afwd` and `afpg`
-are refused with what replaced them.
+(draft §Bitrates). The parameters `vbr`, `abr`, `vfwd`, `afwd`, `afpg` and
+`clip` are refused with what replaced them.
 
 - Alternatives to field parameters: `preset=<name>`, or `ns=` with a full
   namespace.
-- `clip=<id>` selects a clip from `media/sources.yaml`: tuple field 1
-  becomes the clip id.
+- `content=<clip id>` selects a clip from `media/sources.yaml`; tuple
+  field 1 is the clip id.
 - Run parameters: `tool`, `relay`, `mode` (`namespace` | `publish`), `draft`,
   `transport` (`moqt` | `webtransport`), `ttl`, `isolate`. FORWARD is not a
   parameter: tools send 1 and follow the relay.
@@ -227,7 +227,7 @@ values.
 Synthetic content stays the default. For `clip`:
 
 - **Catalog of clips:** `media/sources.yaml` lists each clip: id
-  (`[a-z0-9_]+`, not `clock`, `bars` or `noise`), title, HTTPS URL, `capture_s`, license and attribution
+  (`[a-z0-9_]+`, not `clock`, `bars`, `noise` or `clip`), title, HTTPS URL, `capture_s`, license and attribution
   text.
 - **Not in git:** recordings run to hundreds of MB. In the runner container,
   `mtt media fetch <id>` records `capture_s` seconds of the URL's best

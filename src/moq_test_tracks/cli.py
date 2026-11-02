@@ -217,11 +217,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         return _fail([f"relay {args.relay} is not in the allowlist"])
     prefix = from_slash(args.prefix) if args.prefix else cfg.prefix(tool.id)
     if not args.ns and args.content == "clip":
-        if not args.clip:
-            return _fail(["--content clip needs --clip <id>"])
-        args.content = args.clip
-    elif not args.ns and args.clip:
-        return _fail(["--clip needs --content clip"])
+        return _fail(["--content takes the clip id: --content <clip id>"])
     try:
         if args.ns:
             namespace = from_text(args.ns)
@@ -474,7 +470,8 @@ def cmd_tokens(args: argparse.Namespace) -> int:
 
 def _add_media_options(p: argparse.ArgumentParser) -> None:
     for opt, name in MEDIA_OPTIONS.items():
-        p.add_argument(f"--{opt}", dest=opt, metavar="VALUE", help=name)
+        text = "clock, bars, noise or a clip id" if opt == "content" else name
+        p.add_argument(f"--{opt}", dest=opt, metavar="VALUE", help=text)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -488,7 +485,6 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--draft", type=int, help="MoQT draft (default: the relay's default)")
     run.add_argument("--mode", choices=MODES, default="publish")
     run.add_argument("--ttl", type=int, help="seconds (default: policy default_ttl_s)")
-    run.add_argument("--clip", help="clip id for --content clip (goes in tuple field 1)")
     run.add_argument("--prefix", help="namespace prefix in slash notation (default: policy + tool)")
     run.add_argument("--ns", help="full namespace instead of field options")
     _add_media_options(run)

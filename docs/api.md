@@ -86,12 +86,12 @@ one the service publishes; a namespace you pass in is rewritten to it.
 Bitrates are not parameters: the draft derives the video bitrate from height
 and frame rate, and the audio bitrate from codec and channels.
 `/api/v1/namespace/decode` reports them. The parameters `vbr`, `abr`, `vfwd`,
-`afwd` and `afpg` are refused with what replaced them.
+`afwd`, `afpg` and `clip` are refused with what replaced them.
 
+- `content`: `clock`, `bars`, `noise`, or a clip id from `/api/v1/clips`
+  (`content=bbb_4k30`). `content=clip` is refused: the content is the clip id.
 - `preset`: a name from `/api/v1/presets` (`720p30`, `1080p60`, `audio`,
   `cmaf`, …).
-- `clip`: a clip id from `/api/v1/clips`, with `content` `clip` or left out.
-  Field 1 of the namespace is then the clip id.
 
 **Run parameters.** These are not part of the namespace.
 

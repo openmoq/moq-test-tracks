@@ -67,7 +67,8 @@ from the values the draft gives them.
    moqx-main, subscribe with draft 18 (see [docs/api.md](docs/api.md#subscribing)).
 
 The service names its namespaces `openmoq/<tool>/mtt_00/…`. For a clip,
-field 1 is the clip id instead of `clock`, `bars` or `noise`, as in
+field 1 (`content=<clip id>`) is the clip id instead of `clock`, `bars` or
+`noise`, as in
 `openmoq/aiomoqt/mtt_00/bbb_4k30/cmaf/h264/1080/30/aac/2`. The draft's
 examples use the prefix `example`; the fields from `mtt_00` on are the same.
 

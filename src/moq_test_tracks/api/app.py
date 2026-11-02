@@ -149,16 +149,8 @@ def create_app(
         if getattr(spec, "content", None) == "clip" and spec.clip not in cfg.clips:
             raise ValueError(f"unknown clip {spec.clip}")
 
-    def resolve_namespace(params: dict, preset: str | None, tool: str, clip: str | None):
-        """Namespace from a preset and parameters; clip=<id> selects that clip's content."""
-        if clip is not None:
-            if clip not in cfg.clips:
-                raise ValueError(f"unknown clip {clip}")
-            if params.get("content", "clip") != "clip":
-                raise ValueError("clip=<id> needs content clip")
-            params = {**params, "content": clip}
-        elif params.get("content") == "clip":
-            raise ValueError("content clip needs clip=<id>")
+    def resolve_namespace(params: dict, preset: str | None, tool: str):
+        """Namespace from a preset and parameters; content=<clip id> selects a clip."""
         spec = presets.resolve(params, preset)
         check_clip(spec)
         return encode(spec, cfg.prefix(tool)), spec
@@ -184,6 +176,7 @@ def create_app(
         params = {
             **{k: v for k, v in query.items() if k in presets.PARAMS or k in presets.REMOVED},
             **data.get("params", {}),
+            **({"clip": data["clip"]} if "clip" in data else {}),
         }
         tool = data.get("tool") or query.get("tool") or "aiomoqt"
         ns_text = data.get("namespace") or query.get("ns")
@@ -194,8 +187,7 @@ def create_app(
                 namespace = encode(decoded.spec, decoded.prefix)  # the shortest form
             else:
                 preset = data.get("preset") or query.get("preset")
-                clip = data.get("clip") or query.get("clip") or None
-                namespace, _ = resolve_namespace(params, preset, tool, clip)
+                namespace, _ = resolve_namespace(params, preset, tool)
         except (ValueError, NamespaceError) as e:
             raise HTTPException(422, {"errors": _errors(e)}) from None
 
@@ -305,9 +297,7 @@ def create_app(
         params = {k: v for k, v in query.items() if k in presets.PARAMS or k in presets.REMOVED}
         tool = query.get("tool", "aiomoqt")
         try:
-            ns, spec = resolve_namespace(
-                params, query.get("preset"), tool, query.get("clip") or None
-            )
+            ns, spec = resolve_namespace(params, query.get("preset"), tool)
         except (ValueError, NamespaceError) as e:
             raise HTTPException(422, {"errors": _errors(e)}) from None
         return {
