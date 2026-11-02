@@ -253,7 +253,7 @@ values. Every source format guarantees:
 | `annexb` | two FIFOs, live: `video_path` (Annex B) and `audio_path` (ADTS AAC or Ogg Opus) | For tools that take elementary streams. A path is `null` when the namespace has no video or no audio. |
 | `fmp4` | FIFO, live | An init segment, then one moof+mdat per frame (CMAF chunks) |
 | `flv` | FIFO, live | H.264 + AAC only |
-| `mp4` | file, `loop: true` | Non-fragmented and not interleaved. Its length is a whole number of groups, so the tool can loop it seamlessly. Cached and shared between jobs. |
+| `mp4` | file, `loop: true` | Non-fragmented and not interleaved. Its length is a whole number of video and audio groups, so the tool can loop it seamlessly. Cached and shared between jobs. |
 
 For a live source, the service starts ffmpeg writing to the FIFO before
 starting the adapter. The FIFO only produces data while the tool reads it.
