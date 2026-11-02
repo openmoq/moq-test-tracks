@@ -33,7 +33,7 @@ tool reads `request.json` natively.
 5. **Open a PR.**
 
 `tool_id` matches `[a-z0-9_]+`. It becomes a namespace field
-(`openmoq/mtt/<tool_id>/…`), so it must render verbatim in MoQT names.
+(`openmoq/<tool_id>/…`), so it must render verbatim in MoQT names.
 
 ## Manifest
 
@@ -45,7 +45,7 @@ id: aiomoqt
 name: aiomoqt pub_media
 repository: https://github.com/gmarzot/aiomoqt
 version: 0.12.0                    # tool version installed in the image
-protocols: [moq_test_tracks_00]    # version fields this tool can produce
+protocols: [mtt_00]                # version fields this tool can produce
 sources: [mpegts, mp4]             # formats check mode may request
 stop:
   signal: SIGINT                   # first signal sent on stop
@@ -104,10 +104,10 @@ No secrets are ever passed to a tool.
 {
   "contract_version": 2,
   "job_id": "j_7f3a9c",
-  "protocol": "moq_test_tracks_00",
-  "namespace": ["openmoq", "mtt", "aiomoqt", "moq_test_tracks_00",
-                "clock", "msf", "loc", "h264", "720", "30", "aac", "2"],
-  "namespace_safe": "openmoq-mtt-aiomoqt-moq_test_tracks_00-clock-msf-loc-h264-720-30-aac-2",
+  "protocol": "mtt_00",
+  "namespace": ["openmoq", "aiomoqt", "mtt_00",
+                "clock", "loc", "h264", "720", "30", "aac", "2"],
+  "namespace_safe": "openmoq-aiomoqt-mtt_00-clock-loc-h264-720-30-aac-2",
   "tracks": ["catalog", "video", "audio"],
   "fields": {
     "content": "clock", "catalog": "msf", "packaging": "loc",
@@ -136,7 +136,8 @@ No secrets are ever passed to a tool.
 - **`endpoints`** has one entry unless the manifest's `max_endpoints` is
   more than 1.
 - **`clip`** is set when `content` is `clip`:
-  `{"id": "bbb", "path": "/cache/clips/bbb.mp4", "attribution": "…"}`. A
+  `{"id": "bbb", "path": "/cache/clips/bbb.mp4", "attribution": "…"}`. The
+  id is tuple field 1 of the namespace. A
   tool that encodes for itself reads the clip from `path` and shows
   `attribution` in the picture, as the shared recipes do.
 - **`source`** is the media the service prepared, in the format check mode

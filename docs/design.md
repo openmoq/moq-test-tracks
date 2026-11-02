@@ -38,16 +38,18 @@ A request has two halves:
 | Track characteristics | the namespace | catalog, packaging, codec, height, fps, audio datagrams, content |
 | Run parameters | the API request only | tool, relay, mode, MoQT draft, transport, TTL |
 
-- **Shortest form.** Fields 1 to 8 are required. Fields 9 to 13 (init
-  data, group duration, audio delivery, duration, video tracks) may be left
-  off the end and then take the value the draft gives them. A longer
+- **Shortest form.** Fields 1 to 7 (content, packaging, video codec,
+  height, frame rate, audio codec, channels) are required. Fields 8 to 13
+  (catalog, init data, group duration, audio delivery, duration, video
+  tracks) may be left off the end and then take the value the draft gives
+  them. A longer
   namespace names the same tracks, but the service always publishes, and
   returns, the shortest form, as the draft requires of publishers. Required
   fields have no defaults on the wire; convenience lives in the API: presets
   (`preset=720p30`) and per-parameter fallbacks fill in whatever the caller
   leaves out.
-- **Prefix:** `openmoq/mtt/<tool_id>`, plus `/<clip_id>` when the content is
-  `clip`. The same shape from two tools gives two comparable namespaces on
+- **Prefix:** `openmoq/<tool_id>`, then `mtt_00`. A clip's id is tuple
+  field 1. The same shape from two tools gives two comparable namespaces on
   one relay. An optional run field
   (`isolate=1` → `r_<job_id>`) keeps a job from being shared.
 - **Dedupe:** a request for a (relay, namespace) that an active job already
@@ -135,13 +137,13 @@ Query parameters:
 
 | Param | Draft field | | Param | Draft field |
 |-------|-------|-|-------|-------|
-| `content` | 1 content | | `ch` | 8 channels |
-| `cat` | 2 catalog | | `init` | 9 init data |
-| `pkg` | 3 packaging | | `gop` | 10 group ms |
-| `vc` | 4 video codec | | `adel` | 11 audio delivery |
-| `h` | 5 height | | `dur` | 12 duration s |
-| `fps` | 6 frame rate | | `vt` | 13 video tracks |
-| `ac` | 7 audio codec | | | |
+| `content` | 1 content | | `cat` | 8 catalog |
+| `pkg` | 2 packaging | | `init` | 9 init data |
+| `vc` | 3 video codec | | `gop` | 10 group ms |
+| `h` | 4 height | | `adel` | 11 audio delivery |
+| `fps` | 5 frame rate | | `dur` | 12 duration s |
+| `ac` | 6 audio codec | | `vt` | 13 video tracks |
+| `ch` | 7 channels | | | |
 
 Bitrates follow from height and frame rate, and from codec and channels
 (draft §Bitrates). The parameters `vbr`, `abr`, `vfwd`, `afwd` and `afpg`
@@ -149,8 +151,8 @@ are refused with what replaced them.
 
 - Alternatives to field parameters: `preset=<name>`, or `ns=` with a full
   namespace.
-- `clip=<id>` selects a clip from `media/sources.yaml`: it sets `content` to
-  `clip` and adds the clip id to the prefix.
+- `clip=<id>` selects a clip from `media/sources.yaml`: tuple field 1
+  becomes the clip id.
 - Run parameters: `tool`, `relay`, `mode` (`namespace` | `publish`), `draft`,
   `transport` (`moqt` | `webtransport`), `ttl`, `isolate`. FORWARD is not a
   parameter: tools send 1 and follow the relay.
@@ -225,7 +227,7 @@ values.
 Synthetic content stays the default. For `clip`:
 
 - **Catalog of clips:** `media/sources.yaml` lists each clip: id
-  (`[a-z0-9_]+`), title, HTTPS URL, `capture_s`, license and attribution
+  (`[a-z0-9_]+`, not `clock`, `bars` or `noise`), title, HTTPS URL, `capture_s`, license and attribution
   text.
 - **Not in git:** recordings run to hundreds of MB. In the runner container,
   `mtt media fetch <id>` records `capture_s` seconds of the URL's best
@@ -246,8 +248,8 @@ Synthetic content stays the default. For `clip`:
 - **Encoding:** jobs encode the newest recording to the namespace's shape:
   scaled and padded to the height, converted to the frame rate, with the
   credit line drawn in. The aiomoqt adapter always uses the cached mp4 loop
-  for clips, so each shape encodes once. The clip id is the prefix field
-  after the tool id: `openmoq/mtt/<tool_id>/<clip_id>/moq_test_tracks_00/…`.
+  for clips, so each shape encodes once. The clip id is tuple field 1:
+  `openmoq/<tool_id>/mtt_00/<clip_id>/…`.
 - **Attribution:** the open films are Creative Commons Attribution, not
   public domain. The picture carries a small credit line, the dashboard
   lists credits, and each license is checked against the text in the
@@ -357,12 +359,12 @@ Everything is in `deploy/compose.yaml`; the host only needs Docker.
 | # | Deliverable | Done when |
 |---|-------------|-----------|
 | 0 | Repo scaffolding, draft -00, tool contract, this plan | reviewed |
-| 1 | Namespace codec (moq_test_tracks_00 + moq-test-00) and the `mtt ns` CLI | property tests round-trip; the draft's examples parse |
+| 1 | Namespace codec (mtt_00 + moq-test-00) and the `mtt ns` CLI | property tests round-trip; the draft's examples parse |
 | 2 | Runner and supervisor, ffmpeg source stage, aiomoqt adapter, `mtt run` | a subscriber plays a track from moqx-main |
 | 3 | api: auth, policy, SQLite, dashboard, compose with Caddy; deploy to moq-test.ci.openmoq.org | a keyed user starts, watches and stops a job in the browser |
 | 4 | Probe subscriber (shape checks, fps, kbps, latency), `mtt tools verify`, player links | the dashboard shows the received shape per job, and true end-to-end latency (the probe shares the generator's clock) |
 | 5 | moq-test-00 via moxygen `moqtest_publisher` | moxygen's conformance client passes against a service job |
-| 6 | On-demand responder for `openmoq/mtt/aiomoqt/moq_test_tracks_00` | a plain SUBSCRIBE starts media |
+| 6 | On-demand responder for `openmoq/aiomoqt/mtt_00` | a plain SUBSCRIBE starts media |
 | 7 | More tools: ffmpeg (libmoq), moqxr | each passes `mtt tools verify` |
 
 ## Open decisions
@@ -386,7 +388,7 @@ To raise with reviewers; these become GitHub issues once the repo is public.
    set to match if it lands.
 4. **ABR.** The draft's field 13 expresses ladders (`altN`) and views
    (`viewN`). No tool here publishes more than one video track yet.
-5. **Profile and level.** Should tuple field 4 accept codec strings as well
+5. **Profile and level.** Should tuple field 3 accept codec strings as well
    as short names? Codec strings contain `.`, which the §8.8 representation
    escapes.
 6. **MSF with CMAF.** CMSF extends MSF with `cmaf` packaging and has no

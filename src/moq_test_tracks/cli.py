@@ -31,13 +31,13 @@ from .spec.namespace import decode, encode, from_slash, from_text, render, to_sl
 # Option names match the API's query parameters (docs/design.md).
 MEDIA_OPTIONS = {
     "content": "content",
-    "cat": "catalog",
     "pkg": "packaging",
     "vc": "video_codec",
     "h": "video_height",
     "fps": "frame_rate",
     "ac": "audio_codec",
     "ch": "audio_channels",
+    "cat": "catalog",
     "init": "init_data",
     "gop": "group_ms",
     "adel": "audio_delivery",
@@ -215,7 +215,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     relay = cfg.relays.get(args.relay or cfg.default_relay)
     if relay is None:
         return _fail([f"relay {args.relay} is not in the allowlist"])
-    prefix = from_slash(args.prefix) if args.prefix else cfg.prefix(tool.id, args.clip)
+    prefix = from_slash(args.prefix) if args.prefix else cfg.prefix(tool.id)
+    if not args.ns and args.content == "clip":
+        if not args.clip:
+            return _fail(["--content clip needs --clip <id>"])
+        args.content = args.clip
+    elif not args.ns and args.clip:
+        return _fail(["--clip needs --content clip"])
     try:
         if args.ns:
             namespace = from_text(args.ns)
@@ -236,7 +242,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     cache = cfg.root / "var" / "cache"
     clip = None
     if decoded.spec.content == "clip":
-        cid = decoded.prefix[-1].decode() if decoded.prefix else ""
+        cid = decoded.spec.clip or ""
         mezz = media.mezzanine(cache, cid) if cid in cfg.clips else None
         if mezz is None:
             return _fail([f"clip {cid} is not configured and fetched (mtt media fetch)"])
@@ -482,7 +488,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--draft", type=int, help="MoQT draft (default: the relay's default)")
     run.add_argument("--mode", choices=MODES, default="publish")
     run.add_argument("--ttl", type=int, help="seconds (default: policy default_ttl_s)")
-    run.add_argument("--clip", help="clip id for --content clip (adds it to the prefix)")
+    run.add_argument("--clip", help="clip id for --content clip (goes in tuple field 1)")
     run.add_argument("--prefix", help="namespace prefix in slash notation (default: policy + tool)")
     run.add_argument("--ns", help="full namespace instead of field options")
     _add_media_options(run)
@@ -552,7 +558,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     enc = ns_sub.add_parser("encode", help="fields to a namespace", allow_abbrev=False)
     enc.add_argument("--proto", choices=(fields.VERSION, moq_test.VERSION), default=fields.VERSION)
-    enc.add_argument("--prefix", help="prefix fields in slash notation, e.g. openmoq/mtt/aiomoqt")
+    enc.add_argument("--prefix", help="prefix fields in slash notation, e.g. openmoq/aiomoqt")
     _add_media_options(enc)
     enc.add_argument("pairs", nargs="*", metavar="NAME=VALUE", help="moq-test-00 fields")
     enc.add_argument("--render", action="store_true", help="print the MoQT name representation")

@@ -59,7 +59,7 @@ The dashboard exchanges a token for a session cookie of at most 12 hours at
 query parameters. Give either a full namespace or parameters:
 
 ```json
-{"namespace": "openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/loc/h264/720/30/aac/2",
+{"namespace": "openmoq/aiomoqt/mtt_00/clock/loc/h264/720/30/aac/2",
  "relay": "moqx-main", "draft": 18, "mode": "publish", "ttl_s": 600}
 ```
 
@@ -68,20 +68,20 @@ query parameters. Give either a full namespace or parameters:
 ```
 
 **Track parameters.** Each one sets a tuple field of the draft. Required
-fields you leave out take the preset's or the service's fallback values, and
-optional ones (9 to 13) take the value the draft gives them when omitted. The
-response always carries the namespace in its shortest form, the one the
-service publishes; a namespace you pass in is rewritten to it.
+fields (1 to 7) you leave out take the preset's or the service's fallback
+values, and optional ones (8 to 13) take the value the draft gives them when
+omitted. The response always carries the namespace in its shortest form, the
+one the service publishes; a namespace you pass in is rewritten to it.
 
 | Param | Field | Param | Field |
 |-------|-------|-------|-------|
-| `content` | 1 content | `ch` | 8 channels |
-| `cat` | 2 catalog | `init` | 9 init data (`catalog`) |
-| `pkg` | 3 packaging | `gop` | 10 group ms (2000, or 2002 at 29_97) |
-| `vc` | 4 video codec | `adel` | 11 audio delivery: `1`–`100` frames per group, or `dgram` (1) |
-| `h` | 5 height | `dur` | 12 duration s (0) |
-| `fps` | 6 frame rate | `vt` | 13 video tracks: `1`, `alt2`–`alt7`, `view2`–`view16` (1) |
-| `ac` | 7 audio codec | | |
+| `content` | 1 content: `clock`, `bars`, `noise`, or a clip id | `cat` | 8 catalog: `msf` or `none` (`msf`) |
+| `pkg` | 2 packaging | `init` | 9 init data (`catalog`) |
+| `vc` | 3 video codec | `gop` | 10 group ms (2000, or 2002 at 29_97) |
+| `h` | 4 height | `adel` | 11 audio delivery: `1`–`100` frames per group, or `dgram` (1) |
+| `fps` | 5 frame rate | `dur` | 12 duration s (0) |
+| `ac` | 6 audio codec | `vt` | 13 video tracks: `1`, `alt2`–`alt7`, `view2`–`view16` (1) |
+| `ch` | 7 channels | | |
 
 Bitrates are not parameters: the draft derives the video bitrate from height
 and frame rate, and the audio bitrate from codec and channels.
@@ -90,8 +90,8 @@ and frame rate, and the audio bitrate from codec and channels.
 
 - `preset`: a name from `/api/v1/presets` (`720p30`, `1080p60`, `audio`,
   `cmaf`, …).
-- `clip`: a clip id from `/api/v1/clips`. It sets `content` to `clip` and puts
-  the clip id in the namespace prefix.
+- `clip`: a clip id from `/api/v1/clips`, with `content` `clip` or left out.
+  Field 1 of the namespace is then the clip id.
 
 **Run parameters.** These are not part of the namespace.
 
@@ -111,9 +111,11 @@ forwards each SUBSCRIBE to the publisher. Neither is the draft's on-demand
 serving of a whole prefix, which the service does not offer yet: a job always
 publishes one fixed set of tracks.
 
-**Prefix.** The service publishes under `openmoq/mtt/<tool>`, plus
-`/<clip id>` for clips. The draft's examples use the prefix `openmoq/mtt`;
-the fields from `moq_test_tracks_00` on are the same.
+**Prefix.** The service publishes under `openmoq/<tool>`, for clips too:
+`openmoq/aiomoqt/mtt_00/bbb_4k30/cmaf/h264/1080/30/aac/2`. The draft's
+examples use the prefix `example`; the fields from `mtt_00` on are the same.
+A namespace with the earlier version field `moq_test_tracks_00` is refused
+with the `mtt_00` layout.
 
 ## Jobs
 

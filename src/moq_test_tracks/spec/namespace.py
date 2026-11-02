@@ -24,6 +24,11 @@ _FIELD_COUNTS = {
     moq_test.VERSION: (len(moq_test.FIELD_NAMES), len(moq_test.FIELD_NAMES)),
 }
 _VERSIONS = {v.encode(): v for v in _FIELD_COUNTS}
+_SUPERSEDED = b"moq_test_tracks_00"
+_LAYOUT = (
+    f"<prefix>/{fields.VERSION}/content/packaging/vcodec/height/fps/acodec/channels"
+    "[/catalog/init/group_ms/audio_delivery/duration/video_tracks]"
+)
 _SAFE = frozenset(b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 _HEX = frozenset("0123456789abcdef")
 
@@ -80,6 +85,9 @@ def decode(namespace: Sequence[bytes | str]) -> Decoded:
         raise NamespaceError(errors)
     at = next((i for i, f in enumerate(ns) if f in _VERSIONS), None)
     if at is None:
+        if _SUPERSEDED in ns:
+            message = f"{_SUPERSEDED.decode()} is superseded by {fields.VERSION}: {_LAYOUT}"
+            raise NamespaceError([FieldError(None, "namespace", message)])
         raise NamespaceError([FieldError(None, "namespace", "no known version field")])
     version = _VERSIONS[ns[at]]
     rest = ns[at + 1 :]
@@ -107,8 +115,8 @@ def decode(namespace: Sequence[bytes | str]) -> Decoded:
 
 
 def parse_media(tokens: list[str]) -> TrackSpec:
-    """Characteristic fields of moq_test_tracks_00, optional ones omitted from the end, to a
-    validated spec."""
+    """Characteristic fields of mtt_00, optional ones omitted from the end, to a validated
+    spec."""
     errors: list[FieldError] = []
     values: dict[str, object] = {}
     for field, token in zip(FIELDS[: len(tokens)], tokens, strict=True):
@@ -124,6 +132,8 @@ def parse_media(tokens: list[str]) -> TrackSpec:
         raise NamespaceError(errors)
     for field in FIELDS[len(tokens) :]:
         values[field.name] = fields.omitted_value(field, values)
+    if values["content"] is not None:
+        values["content"], values["clip"] = fields.split_content(str(values["content"]))
     spec = TrackSpec(**values)  # type: ignore[arg-type]
     errors = fields.check(spec)
     if errors:
@@ -136,7 +146,7 @@ def format_media(spec: TrackSpec) -> list[str]:
     errors = fields.check(spec)
     if errors:
         raise NamespaceError(errors)
-    values = {f.name: getattr(spec, f.name) for f in FIELDS}
+    values = fields.field_values(spec)
     out = [NA if values[f.name] is None else str(values[f.name]) for f in FIELDS]
     while len(out) > fields.REQUIRED:
         field = FIELDS[len(out) - 1]

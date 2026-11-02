@@ -324,15 +324,13 @@ def test_public_endpoints(client):
     assert client.get("/healthz").json() == {"ok": True, "runner": True}
     r = client.get("/api/v1/namespace", params={"preset": "360p"})
     assert r.status_code == 200
-    assert r.json()["namespace"].startswith(
-        "openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/loc/h264/360/"
-    )
+    assert r.json()["namespace"].startswith("openmoq/aiomoqt/mtt_00/clock/loc/h264/360/")
     assert client.get("/api/v1/namespace", params={"vbr": "900"}).status_code == 422
     assert client.get("/api/v1/namespace", params={"h": "700"}).status_code == 422
     decoded = client.get("/api/v1/namespace/decode", params={"ns": r.json()["namespace"]})
     assert decoded.json()["fields"]["video_height"] == 360
     assert decoded.json()["video_kbps"] == 600 and decoded.json()["audio_kbps"] == 128
-    full = r.json()["namespace"] + "/catalog/2000/1/0/1"
+    full = r.json()["namespace"] + "/msf/catalog/2000/1/0/1"
     shortened = client.get("/api/v1/namespace/decode", params={"ns": full}).json()["namespace"]
     assert shortened == r.json()["namespace"]
     assert "1080p60" in client.get("/api/v1/presets").json()["presets"]
@@ -415,18 +413,26 @@ def test_query_parameters_and_check(client, keys, stub):
     )
     assert r.status_code == 200
     ns = r.json()["plan"][1]
-    assert ns.endswith("_00/clock/msf/loc/h264/1080/60/opus/2/catalog/2000/dgram")
+    assert ns.endswith("/mtt_00/clock/loc/h264/1080/60/opus/2/msf/catalog/2000/dgram")
 
 
 def test_namespace_prefix_is_enforced(client, keys):
-    ns = "elsewhere/x/moq_test_tracks_00/clock/msf/loc/h264/360/30/aac/2"
+    ns = "elsewhere/x/mtt_00/clock/loc/h264/360/30/aac/2"
     r = client.post("/api/v1/jobs", json={"namespace": ns}, headers=bearer(keys["run"]))
-    assert r.status_code == 422 and "prefix must be openmoq/mtt/aiomoqt" in r.text
-    ok = ns.replace("elsewhere/x", "openmoq/mtt/aiomoqt")
+    assert r.status_code == 422 and "prefix must be openmoq/aiomoqt" in r.text
+    ok = ns.replace("elsewhere/x", "openmoq/aiomoqt")
     assert (
         client.post("/api/v1/jobs", json={"namespace": ok}, headers=bearer(keys["run"])).status_code
         == 201
     )
+
+
+def test_superseded_namespace_names_mtt_00(client, keys):
+    old = "openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/loc/h264/360/30/aac/2"
+    r = client.post("/api/v1/jobs", json={"namespace": old}, headers=bearer(keys["run"]))
+    assert r.status_code == 422 and "moq_test_tracks_00 is superseded by mtt_00" in r.text
+    r = client.get("/api/v1/namespace/decode", params={"ns": old})
+    assert r.status_code == 422 and "mtt_00" in r.text
 
 
 def test_clip_namespaces(client, keys):
@@ -434,7 +440,11 @@ def test_clip_namespaces(client, keys):
     r = client.get("/api/v1/namespace", params={"clip": "nasa_tv", "h": "720"}, headers=run)
     assert r.status_code == 200
     ns = r.json()["namespace"]
-    assert ns.startswith("openmoq/mtt/aiomoqt/nasa_tv/moq_test_tracks_00/clip/")
+    assert ns == "openmoq/aiomoqt/mtt_00/nasa_tv/loc/h264/720/30/aac/2"
+    decoded = client.get("/api/v1/namespace/decode", params={"ns": ns}).json()["fields"]
+    assert (decoded["content"], decoded["clip"]) == ("clip", "nasa_tv")
+    by_content = client.get("/api/v1/namespace", params={"content": "nasa_tv", "h": "720"})
+    assert by_content.json()["namespace"] == ns
     assert client.post("/api/v1/jobs", json={"namespace": ns}, headers=run).status_code == 201
     assert client.post("/api/v1/jobs", json={"clip": "nasa_tv"}, headers=run).status_code == 201
     for bad, text in (
@@ -442,8 +452,7 @@ def test_clip_namespaces(client, keys):
         ({"params": {"content": "clip"}}, "needs clip=<id>"),
         ({"clip": "nasa_tv", "params": {"content": "bars"}}, "needs content clip"),
         ({"namespace": ns.replace("/nasa_tv/", "/bogus/")}, "unknown clip bogus"),
-        ({"namespace": ns.replace("_00/clip/", "_00/bars/")}, "prefix must be openmoq/mtt/aiomoqt"),
-        ({"namespace": ns.replace("nasa_tv/", "")}, "/<clip id>"),
+        ({"namespace": ns.replace("openmoq/", "openmoq/nasa_tv/")}, "prefix must be"),
     ):
         r = client.post("/api/v1/jobs", json=bad, headers=run)
         assert r.status_code == 422 and text in r.text, (bad, r.text)

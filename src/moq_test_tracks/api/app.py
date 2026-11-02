@@ -145,6 +145,10 @@ def create_app(
             )
         return relay
 
+    def check_clip(spec) -> None:
+        if getattr(spec, "content", None) == "clip" and spec.clip not in cfg.clips:
+            raise ValueError(f"unknown clip {spec.clip}")
+
     def resolve_namespace(params: dict, preset: str | None, tool: str, clip: str | None):
         """Namespace from a preset and parameters; clip=<id> selects that clip's content."""
         if clip is not None:
@@ -152,24 +156,20 @@ def create_app(
                 raise ValueError(f"unknown clip {clip}")
             if params.get("content", "clip") != "clip":
                 raise ValueError("clip=<id> needs content clip")
-            params = {**params, "content": "clip"}
-        spec = presets.resolve(params, preset)
-        if spec.content == "clip" and clip is None:
+            params = {**params, "content": clip}
+        elif params.get("content") == "clip":
             raise ValueError("content clip needs clip=<id>")
-        return encode(spec, cfg.prefix(tool, clip)), spec
+        spec = presets.resolve(params, preset)
+        check_clip(spec)
+        return encode(spec, cfg.prefix(tool)), spec
 
     def check_prefix(decoded, tool: str) -> None:
-        """The policy prefix for the tool, plus a configured clip id for clip content."""
+        """The policy prefix for the tool, and a configured clip id for clip content."""
         prefix = tuple(f.decode(errors="replace") for f in decoded.prefix)
         base = cfg.prefix(tool)
-        if getattr(decoded.spec, "content", None) == "clip":
-            clip = prefix[-1] if len(prefix) == len(base) + 1 else None
-            if prefix[: len(base)] != base or clip is None:
-                raise ValueError(f"the namespace prefix must be {'/'.join(base)}/<clip id>")
-            if clip not in cfg.clips:
-                raise ValueError(f"unknown clip {clip}")
-        elif prefix != base:
+        if prefix != base:
             raise ValueError(f"the namespace prefix must be {'/'.join(base)}")
+        check_clip(decoded.spec)
 
     async def job_body(request: Request, p: Principal) -> dict:
         """Runner request from a JSON body or query parameters: a namespace, or

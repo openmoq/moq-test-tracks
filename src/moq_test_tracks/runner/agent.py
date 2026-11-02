@@ -170,7 +170,7 @@ class Registry:
             raise Rejected(422, [str(e)]) from None
         if not isinstance(decoded.spec, TrackSpec):
             raise Rejected(422, [f"{decoded.protocol} jobs are not supported yet"])
-        clip = self._clip(decoded.prefix, decoded.spec, tool.id)
+        clip = self._clip(decoded.spec)
         draft = body.draft or relay.default_draft
         ttl = body.ttl_s or cfg.policy.default_ttl_s
         errors = job_errors(
@@ -181,15 +181,13 @@ class Registry:
             raise Rejected(422, errors)
         return tool, relay, namespace, decoded.spec, draft, ttl, clip
 
-    def _clip(self, prefix: tuple[bytes, ...], spec: TrackSpec, tool: str) -> dict | None:
-        """The request's clip for clip content: its id is the prefix field after the tool."""
-        base = len(self.cfg.prefix(tool))
+    def _clip(self, spec: TrackSpec) -> dict | None:
+        """The request's clip for clip content."""
         if spec.content != "clip":
             return None
-        cid = prefix[base].decode() if len(prefix) == base + 1 else None
-        clip = self.cfg.clips.get(cid or "")
+        clip = self.cfg.clips.get(spec.clip or "")
         if clip is None:
-            raise Rejected(422, ["clip content needs a configured clip id after the tool id"])
+            raise Rejected(422, [f"unknown clip {spec.clip}"])
         mezz = media.mezzanine(self.cache, clip.id)
         if mezz is None:
             raise Rejected(

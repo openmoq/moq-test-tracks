@@ -12,7 +12,7 @@ import pytest
 from moq_test_tracks.content.recipes import RecipeError, loop_seconds, source_command
 from moq_test_tracks.spec import decode, from_slash
 
-BASE = "p/moq_test_tracks_00/clock/msf/loc/h264/720/30/aac/2"
+BASE = "p/mtt_00/clock/loc/h264/720/30/aac/2"
 
 
 def _spec(**changes):

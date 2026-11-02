@@ -34,15 +34,15 @@ pytestmark = [
 DRAFT = 22
 DURATION_S = 10
 TRACK_ENDED = 2
-PREFIX = "openmoq/mtt/aiomoqt"
+PREFIX = "openmoq/aiomoqt"
 SHAPES = {
-    "loc": "clock/msf/loc/h264/360/30/aac/2",
-    "cmaf": "clock/msf/cmaf/h264/360/30/aac/2",
-    "locmaf": "clock/msf/locmaf/h264/360/30/aac/2",
-    "h265_opus": "clock/msf/loc/h265/360/30/opus/2",
-    "dgram_audio": "clock/msf/loc/h264/360/30/aac/2/catalog/2000/dgram",
-    "audio_4_per_group": "clock/msf/loc/h264/360/30/aac/2/catalog/2000/4",
-    "no_catalog": "clock/none/loc/h264/360/30/aac/2",
+    "loc": "clock/loc/h264/360/30/aac/2",
+    "cmaf": "clock/cmaf/h264/360/30/aac/2",
+    "locmaf": "clock/locmaf/h264/360/30/aac/2",
+    "h265_opus": "clock/loc/h265/360/30/opus/2",
+    "dgram_audio": "clock/loc/h264/360/30/aac/2/msf/catalog/2000/dgram",
+    "audio_4_per_group": "clock/loc/h264/360/30/aac/2/msf/catalog/2000/4",
+    "no_catalog": "clock/loc/h264/360/30/aac/2/none",
 }
 
 

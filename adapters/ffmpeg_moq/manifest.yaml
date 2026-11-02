@@ -4,7 +4,7 @@ id: ffmpeg_moq
 name: ffmpeg MoQ muxer (libmoq)
 repository: https://github.com/openmoq/FFmpeg
 version: master@775bf198
-protocols: [moq_test_tracks_00]
+protocols: [mtt_00]
 sources: []  # generates and encodes in-process
 stop:
   signal: SIGINT

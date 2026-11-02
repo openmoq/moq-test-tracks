@@ -2,7 +2,7 @@
 # This source code is licensed under the Apache 2.0 license found in the
 # LICENSE file in the root directory of this source tree.
 
-# Characteristic fields of moq_test_tracks_00 (draft-marzot-moq-test-tracks).
+# Characteristic fields of mtt_00 (draft-marzot-moq-test-tracks).
 
 from __future__ import annotations
 
@@ -11,10 +11,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from fractions import Fraction
 
-VERSION = "moq_test_tracks_00"
+VERSION = "mtt_00"
 NA = "_"
 
-CONTENTS = ("clock", "bars", "noise", "clip")
+GENERATED = ("clock", "bars", "noise")
+CONTENTS = (*GENERATED, "clip")  # for clip, tuple field 1 is the clip id
 CATALOGS = ("msf", "none")
 PACKAGINGS = ("loc", "cmaf", "locmaf")
 VIDEO_CODECS = ("h264", "h264cb", "h265", "av1", "none")
@@ -51,9 +52,10 @@ MAX_VIEWS = 16
 AUDIO_SAMPLE_RATE = 48000
 AUDIO_FRAME_SAMPLES = {"aac": 1024, "opus": 960}
 
-REQUIRED = 8  # tuple fields 1-8; fields 9-13 may be omitted from the end
+REQUIRED = 7  # tuple fields 1-7; fields 8-13 may be omitted from the end
 
 _DECIMAL = re.compile(r"0|[1-9][0-9]*")
+CLIP_ID = re.compile(r"[a-z0-9_]+")
 _VIDEO_TRACKS = re.compile(r"(alt|view)([1-9][0-9]*)")
 
 
@@ -110,6 +112,17 @@ def _int_range(lo: int, hi: int) -> Callable[[str], int]:
     return parse
 
 
+def _content(token: str) -> str:
+    if token in GENERATED or CLIP_ID.fullmatch(token):
+        return token
+    raise ValueError(f"{token!r} is not clock, bars, noise or a clip id of a-z, 0-9 and _")
+
+
+def split_content(token: str) -> tuple[str, str | None]:
+    """Field 1 to (content, clip id)."""
+    return (token, None) if token in GENERATED else ("clip", token)
+
+
 def _frame_rate(token: str) -> str:
     if token in FRACTIONAL_RATES:
         return token
@@ -155,15 +168,17 @@ def applies(field: Field, *, catalog: bool, video: bool, audio: bool) -> bool:
     return field.needs is None or {"catalog": catalog, "video": video, "audio": audio}[field.needs]
 
 
+_NEEDS = {"catalog": "catalog", "video": "video_codec", "audio": "audio_codec"}  # none: absent
+
 FIELDS = (
-    Field(1, "content", None, _tokens(CONTENTS)),
-    Field(2, "catalog", None, _tokens(CATALOGS)),
-    Field(3, "packaging", None, _tokens(PACKAGINGS)),
-    Field(4, "video_codec", None, _tokens(VIDEO_CODECS)),
-    Field(5, "video_height", "video", _int_choices(HEIGHTS)),
-    Field(6, "frame_rate", "video", _frame_rate),
-    Field(7, "audio_codec", None, _tokens(AUDIO_CODECS)),
-    Field(8, "audio_channels", "audio", _int_choices((1, 2))),
+    Field(1, "content", None, _content),
+    Field(2, "packaging", None, _tokens(PACKAGINGS)),
+    Field(3, "video_codec", None, _tokens(VIDEO_CODECS)),
+    Field(4, "video_height", "video", _int_choices(HEIGHTS)),
+    Field(5, "frame_rate", "video", _frame_rate),
+    Field(6, "audio_codec", None, _tokens(AUDIO_CODECS)),
+    Field(7, "audio_channels", "audio", _int_choices((1, 2))),
+    Field(8, "catalog", None, _tokens(CATALOGS), lambda v: "msf"),
     Field(9, "init_data", "catalog", _tokens(INIT_DATA), lambda v: "catalog"),
     Field(
         10, "group_ms", "video", _int_range(100, 10000), lambda v: default_group_ms(v["frame_rate"])
@@ -176,12 +191,9 @@ FIELDS = (
 
 def omitted_value(field: Field, values: dict) -> object:
     """The value of an optional field left off the end, given the fields before it."""
-    has = {
-        "catalog": values["catalog"] != "none",
-        "video": values["video_codec"] != "none",
-        "audio": values["audio_codec"] != "none",
-    }
-    return field.omitted(values) if field.omitted and applies(field, **has) else None
+    if field.omitted is None or (field.needs and values[_NEEDS[field.needs]] == "none"):
+        return None
+    return field.omitted(values)
 
 
 @dataclass(frozen=True)
@@ -208,6 +220,7 @@ class TrackSpec:
     audio_delivery: int | str | None
     duration_s: int
     video_tracks: str | None
+    clip: str | None = None  # the clip id when content is clip
 
     @property
     def has_catalog(self) -> bool:
@@ -327,11 +340,20 @@ class TrackSpec:
         return Timing(AUDIO_SAMPLE_RATE, samples, self.audio_frames_per_group * samples)
 
 
+def field_values(spec: TrackSpec) -> dict[str, object]:
+    """Tuple field values by name; field 1 carries the clip id for clip content."""
+    out = {f.name: getattr(spec, f.name) for f in FIELDS}
+    if spec.content == "clip":
+        out["content"] = spec.clip
+    return out
+
+
 def check(spec: TrackSpec) -> list[FieldError]:
     """All rule violations in a spec built in code, empty when valid."""
     errors: list[FieldError] = []
+    tokens = field_values(spec)
     for field in FIELDS:
-        value = getattr(spec, field.name)
+        value = tokens[field.name]
         if not applies(field, catalog=spec.has_catalog, video=spec.has_video, audio=spec.has_audio):
             if value is not None:
                 errors.append(FieldError(field.index, field.name, "must be _ (does not apply)"))
@@ -345,6 +367,14 @@ def check(spec: TrackSpec) -> list[FieldError]:
             errors.append(FieldError(field.index, field.name, str(e)))
     if errors:
         return errors
+    if split_content(str(tokens["content"])) != (spec.content, spec.clip):
+        if spec.content not in CONTENTS:
+            problem = f"{spec.content!r} is not one of {', '.join(CONTENTS)}"
+        elif spec.content == "clip":
+            problem = f"clip id {spec.clip} is reserved for generated content"
+        else:
+            problem = f"{spec.content} content takes no clip id"
+        return [FieldError(1, "content", problem)]
     return _cross_checks(spec)
 
 
@@ -353,7 +383,7 @@ def _cross_checks(spec: TrackSpec) -> list[FieldError]:
     if spec.packaging not in CATALOG_PACKAGING[spec.catalog]:
         allowed = " or ".join(CATALOG_PACKAGING[spec.catalog])
         errors.append(
-            FieldError(3, "packaging", f"catalog {spec.catalog} requires packaging {allowed}")
+            FieldError(2, "packaging", f"catalog {spec.catalog} requires packaging {allowed}")
         )
     if spec.packaging in CATALOG_INIT_PACKAGING and spec.init_data not in (None, "catalog"):
         errors.append(

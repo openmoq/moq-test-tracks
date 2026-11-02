@@ -13,13 +13,13 @@ from ..spec.namespace import decode
 # Query parameter -> field name (docs/design.md).
 PARAMS = {
     "content": "content",
-    "cat": "catalog",
     "pkg": "packaging",
     "vc": "video_codec",
     "h": "video_height",
     "fps": "frame_rate",
     "ac": "audio_codec",
     "ch": "audio_channels",
+    "cat": "catalog",
     "init": "init_data",
     "gop": "group_ms",
     "adel": "audio_delivery",

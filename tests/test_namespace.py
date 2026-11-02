@@ -2,7 +2,7 @@
 # This source code is licensed under the Apache 2.0 license found in the
 # LICENSE file in the root directory of this source tree.
 
-# moq_test_tracks_00 codec, MoQT name representation, and the mtt ns CLI.
+# mtt_00 codec, MoQT name representation, and the mtt ns CLI.
 
 import json
 import math
@@ -33,35 +33,44 @@ from moq_test_tracks.spec.fields import (
     DGRAM,
     FIELDS,
     FRACTIONAL_RATES,
+    GENERATED,
     HEIGHTS,
     INIT_DATA,
+    NA,
     REQUIRED,
     VERSION,
     VIDEO_CODECS,
+    field_values,
     group_ms_step,
 )
 
-PREFIX = "openmoq/mtt/moq_test_tracks_00/"
+PREFIX = "example/mtt_00/"
 
 # The examples appendix of draft-marzot-moq-test-tracks, in their shortest form.
 DRAFT_EXAMPLES = [
-    PREFIX + "clock/msf/loc/h264/720/30/aac/2",
-    PREFIX + "clock/msf/loc/av1/1080/60/opus/2/track/2000/dgram",
-    PREFIX + "clock/msf/loc/h264cb/360/30/aac/2/object",
-    PREFIX + "clock/msf/cmaf/h264/720/29_97/none/_/catalog/2002/_/600",
-    PREFIX + "clock/none/loc/none/_/_/opus/1/_/_/10",
-    PREFIX + "clock/msf/loc/h264/1080/30/aac/2/catalog/2000/1/0/alt3",
-    PREFIX + "clock/msf/loc/h264/720/30/aac/2/catalog/2000/1/0/view4",
+    PREFIX + "clock/loc/h264/720/30/aac/2",
+    PREFIX + "clock/loc/av1/1080/60/opus/2/msf/track/2000/dgram",
+    PREFIX + "clock/loc/h264cb/360/30/aac/2/msf/object",
+    PREFIX + "clock/cmaf/h264/720/29_97/none/_/msf/catalog/2002/_/600",
+    PREFIX + "clock/loc/none/_/_/opus/1/none/_/_/10",
+    PREFIX + "clock/loc/h264/1080/30/aac/2/msf/catalog/2000/1/0/alt3",
+    PREFIX + "clock/loc/h264/720/30/aac/2/msf/catalog/2000/1/0/view4",
 ]
-CLIP_EXAMPLE = "openmoq/mtt/clip_a/moq_test_tracks_00/clip/msf/cmaf/h264/1080/30/aac/2"
-FULL_FORM = PREFIX + "clock/msf/loc/h264/720/30/aac/2/catalog/2000/1/0/1"
+CLIP_EXAMPLE = PREFIX + "clip_a/cmaf/h264/1080/30/aac/2"
+FULL_FORM = PREFIX + "clock/loc/h264/720/30/aac/2/msf/catalog/2000/1/0/1"
 BASE = DRAFT_EXAMPLES[0]
 CMAF_EXAMPLE = DRAFT_EXAMPLES[3]
-DRAFT_RENDERED = "openmoq-mtt-moq_test_tracks_00-clock-msf-loc-h264-720-30-aac-2--video"
+DRAFT_RENDERED = "example-mtt_00-clock-loc-h264-720-30-aac-2--video"
 
 
 def _ns(text):
     return from_slash(text)
+
+
+def _replace(text, index, token):
+    parts = text.split("/")
+    parts[1 + index] = token  # parts[1] is the version field
+    return "/".join(parts)
 
 
 def _base(**changes):
@@ -90,19 +99,41 @@ def test_only_trailing_fields_are_optional():
     assert [f.index for f in FIELDS] == list(range(1, len(FIELDS) + 1))
 
 
-@pytest.mark.parametrize("text", DRAFT_EXAMPLES)
+@pytest.mark.parametrize("text", [*DRAFT_EXAMPLES, CLIP_EXAMPLE])
 def test_draft_examples_round_trip(text):
     decoded = decode(_ns(text))
     assert decoded.protocol == VERSION
-    assert decoded.prefix == (b"openmoq", b"mtt")
+    assert decoded.prefix == (b"example",)
     assert to_slash(encode(decoded.spec, decoded.prefix)) == text
 
 
 def test_clip_example():
-    decoded = decode(_ns(CLIP_EXAMPLE))
-    assert decoded.prefix == (b"openmoq", b"mtt", b"clip_a")
-    assert decoded.spec.content == "clip" and decoded.spec.video_kbps == 4500
-    assert to_slash(encode(decoded.spec, decoded.prefix)) == CLIP_EXAMPLE
+    spec = decode(_ns(CLIP_EXAMPLE)).spec
+    assert (spec.content, spec.clip) == ("clip", "clip_a") and spec.video_kbps == 4500
+    assert decode(_ns(BASE)).spec.clip is None
+
+
+@pytest.mark.parametrize("clip", ["film", "clip", "bbb_4k30", "none", "mtt_00"])
+def test_any_other_content_is_a_clip_id(clip):
+    spec = decode(_ns(_replace(BASE, 1, clip))).spec
+    assert (spec.content, spec.clip) == ("clip", clip)
+    assert to_slash(encode(spec, ("example",))) == _replace(BASE, 1, clip)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        dict(content="clip"),  # no clip id
+        dict(content="clip", clip="bars"),  # reserved
+        dict(clip="film"),  # only clip content has a clip id
+        dict(content="film"),  # not a content
+        dict(content="clip", clip="Film"),
+    ],
+)
+def test_check_rejects_bad_clip_specs(changes):
+    with pytest.raises(NamespaceError) as e:
+        encode(_base(**changes))
+    assert [err.index for err in e.value.errors] == [1]
 
 
 def test_full_form_names_the_same_tracks():
@@ -114,8 +145,9 @@ def test_full_form_names_the_same_tracks():
 def test_omitted_values():
     spec = decode(_ns(BASE)).spec
     assert (spec.init_data, spec.group_ms, spec.audio_delivery) == ("catalog", 2000, 1)
-    assert (spec.duration_s, spec.video_tracks) == (0, "1")
-    assert decode(_ns(PREFIX + "clock/msf/loc/h264/720/29_97/aac/2")).spec.group_ms == 2002
+    assert (spec.duration_s, spec.video_tracks, spec.catalog) == (0, "1", "msf")
+    assert decode(_ns(PREFIX + "clock/loc/h264/720/29_97/aac/2")).spec.group_ms == 2002
+    assert decode(_ns(BASE + "/none")).spec.init_data is None
     audio_only = decode(_ns(DRAFT_EXAMPLES[4])).spec
     assert audio_only.init_data is None and audio_only.group_ms is None
     assert audio_only.video_tracks is None and audio_only.audio_delivery == 10
@@ -190,44 +222,41 @@ def test_widths():
     }
 
 
-def _replace(text, index, token):
-    parts = text.split("/")
-    parts[2 + index] = token  # parts[2] is the version field
-    return "/".join(parts)
-
-
 @pytest.mark.parametrize(
     "text, index",
     [
-        (_replace(FULL_FORM, 1, "film"), 1),
-        (_replace(FULL_FORM, 2, "cmsf"), 2),  # CMSF is an MSF catalog
-        (PREFIX + "clock/none/cmaf/h264/720/30/aac/2", 3),
-        (_replace(FULL_FORM, 4, "vp9"), 4),
-        (_replace(FULL_FORM, 4, "h264h"), 4),
-        (_replace(FULL_FORM, 5, "0720"), 5),  # leading zero
-        (_replace(FULL_FORM, 5, "+720"), 5),
-        (_replace(FULL_FORM, 5, "700"), 5),  # not a defined height
-        (_replace(FULL_FORM, 5, "_"), 5),  # applies, so not _
-        (PREFIX + "clock/none/loc/none/720/_/aac/2", 5),  # n/a must be _
-        (_replace(FULL_FORM, 6, "121"), 6),
-        (_replace(FULL_FORM, 6, "29.97"), 6),
-        (_replace(FULL_FORM, 8, "3"), 8),
+        (_replace(FULL_FORM, 1, "Film"), 1),
+        (_replace(FULL_FORM, 1, "a.b"), 1),
+        (_replace(FULL_FORM, 1, "_"), 1),
+        (PREFIX + "clock/cmaf/h264/720/30/aac/2/none", 2),  # no catalog: loc only
+        (_replace(FULL_FORM, 3, "vp9"), 3),
+        (_replace(FULL_FORM, 3, "h264h"), 3),
+        (_replace(FULL_FORM, 4, "0720"), 4),  # leading zero
+        (_replace(FULL_FORM, 4, "+720"), 4),
+        (_replace(FULL_FORM, 4, "700"), 4),  # not a defined height
+        (_replace(FULL_FORM, 4, "_"), 4),  # applies, so not _
+        (PREFIX + "clock/loc/none/720/_/aac/2", 4),  # n/a must be _
+        (_replace(FULL_FORM, 5, "121"), 5),
+        (_replace(FULL_FORM, 5, "29.97"), 5),
+        (_replace(FULL_FORM, 7, "3"), 7),
+        (_replace(FULL_FORM, 8, "cmsf"), 8),  # CMSF is an MSF catalog
+        (_replace(FULL_FORM, 8, "_"), 8),
         (_replace(FULL_FORM, 9, "inline"), 9),
         (_replace(FULL_FORM, 9, "_"), 9),  # a catalog exists, so init data applies
-        (_replace(_replace(FULL_FORM, 3, "cmaf"), 9, "track"), 9),  # CMSF: init in the catalog
-        (PREFIX + "clock/none/loc/h264/720/30/aac/2/catalog", 9),
-        (_replace(_replace(FULL_FORM, 6, "29_97"), 10, "2000"), 10),  # not whole frames
+        (_replace(_replace(FULL_FORM, 2, "cmaf"), 9, "track"), 9),  # CMSF: init in the catalog
+        (PREFIX + "clock/loc/h264/720/30/aac/2/none/catalog", 9),
+        (_replace(_replace(FULL_FORM, 5, "29_97"), 10, "2000"), 10),  # not whole frames
         (_replace(FULL_FORM, 11, "0"), 11),
         (_replace(FULL_FORM, 11, "101"), 11),
         (_replace(FULL_FORM, 11, "datagram"), 11),
-        (_replace(_replace(FULL_FORM, 3, "locmaf"), 11, "dgram"), 11),
+        (_replace(_replace(FULL_FORM, 2, "locmaf"), 11, "dgram"), 11),
         (_replace(FULL_FORM, 12, "86401"), 12),
         (_replace(FULL_FORM, 13, "2"), 13),
         (_replace(FULL_FORM, 13, "alt1"), 13),
         (_replace(FULL_FORM, 13, "alt8"), 13),
         (_replace(FULL_FORM, 13, "view17"), 13),
-        (PREFIX + "clock/msf/loc/h264/180/15/aac/2/catalog/2000/1/0/alt2", 13),  # no lower rung
-        (PREFIX + "clock/none/loc/h264/720/30/aac/2/_/2000/1/0/alt2", 13),  # needs msf
+        (PREFIX + "clock/loc/h264/180/15/aac/2/msf/catalog/2000/1/0/alt2", 13),  # no lower rung
+        (PREFIX + "clock/loc/h264/720/30/aac/2/none/_/2000/1/0/alt2", 13),  # needs msf
     ],
 )
 def test_invalid_fields(text, index):
@@ -241,15 +270,21 @@ def test_invalid_fields(text, index):
     [
         _ns(BASE)[:-1],  # too few fields
         _ns(FULL_FORM) + (b"x",),  # too many
-        _ns(BASE.replace(VERSION, "moq_test_tracks_01")),  # unknown version
-        tuple(f"p{i}".encode() for i in range(24)) + _ns(BASE)[2:],  # over 32 fields
-        _ns(BASE)[:1] + (b"",) + _ns(BASE)[2:],  # empty field
-        (b"openmoq", b"mtt", VERSION.encode()) + (b"\xff",) + _ns(BASE)[4:],
+        _ns(BASE.replace(VERSION, "mtt_01")),  # unknown version
+        tuple(f"p{i}".encode() for i in range(25)) + _ns(BASE)[1:],  # over 32 fields
+        _ns(BASE)[:1] + (b"",) + _ns(BASE)[1:],  # empty field
+        (b"example", VERSION.encode(), b"\xff") + _ns(BASE)[3:],
     ],
 )
 def test_invalid_namespaces(namespace):
     with pytest.raises(NamespaceError):
         decode(namespace)
+
+
+def test_superseded_version_names_mtt_00():
+    old = "openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/loc/h264/720/30/aac/2"
+    with pytest.raises(NamespaceError, match="moq_test_tracks_00 is superseded by mtt_00"):
+        decode(_ns(old))
 
 
 def test_prefix_cannot_hold_a_version():
@@ -268,6 +303,11 @@ def _rungs(height):
     while lower := [h for h in HEIGHTS if 4 * h <= 3 * height]:
         height, n = max(lower), n + 1
     return n
+
+
+clip_ids = st.from_regex(r"[a-z0-9_]{1,12}", fullmatch=True).filter(
+    lambda s: s not in (*GENERATED, NA)
+)
 
 
 @st.composite
@@ -299,6 +339,10 @@ def specs(draw):
             video_tracks=draw(st.sampled_from(tracks)),
         )
     audio = dict.fromkeys(("audio_channels", "audio_delivery"))
+    content = draw(st.sampled_from(CONTENTS))
+    clip = None
+    if content == "clip":
+        clip = draw(clip_ids)
     if audio_codec != "none":
         delivery = st.integers(1, 100)
         if packaging in DATAGRAM_PACKAGING:
@@ -308,7 +352,8 @@ def specs(draw):
             audio_delivery=draw(delivery),
         )
     return TrackSpec(
-        content=draw(st.sampled_from(CONTENTS)),
+        content=content,
+        clip=clip,
         catalog=catalog,
         packaging=packaging,
         video_codec=video_codec,
@@ -340,8 +385,8 @@ def test_round_trip(spec, prefix):
 @given(specs())
 def test_every_length_decodes_to_the_same_spec(spec):
     shortest = encode(spec)
-    tokens = [getattr(spec, f.name) for f in FIELDS]
-    full = (VERSION.encode(), *(b"_" if t is None else str(t).encode() for t in tokens))
+    tokens = field_values(spec)
+    full = (VERSION.encode(), *(b"_" if t is None else str(t).encode() for t in tokens.values()))
     for n in range(len(shortest), len(full) + 1):
         assert decode(full[:n]).spec == spec
 
@@ -379,9 +424,9 @@ ENCODE_ARGS = [
     "ns",
     "encode",
     "--prefix",
-    "openmoq/mtt",
-    "--content", "clock", "--cat", "msf", "--pkg", "loc",
-    "--vc", "h264", "--h", "720", "--fps", "30", "--ac", "aac", "--ch", "2",
+    "example",
+    "--content", "clock", "--pkg", "loc", "--vc", "h264",
+    "--h", "720", "--fps", "30", "--ac", "aac", "--ch", "2", "--cat", "msf",
 ]  # fmt: skip
 
 
@@ -391,7 +436,10 @@ def test_cli_encode(capsys):
     assert main([*ENCODE_ARGS, "--render", "--track", "video"]) == 0
     assert capsys.readouterr().out.strip() == DRAFT_RENDERED
     assert main([*ENCODE_ARGS, "--adel", "dgram"]) == 0
-    assert capsys.readouterr().out.strip() == BASE + "/catalog/2000/dgram"
+    assert capsys.readouterr().out.strip() == BASE + "/msf/catalog/2000/dgram"
+    clip = {"clock": "clip_a", "loc": "cmaf", "720": "1080"}
+    assert main([clip.get(a, a) for a in ENCODE_ARGS]) == 0
+    assert capsys.readouterr().out.strip() == CLIP_EXAMPLE
 
 
 def test_cli_encode_requires_required_fields(capsys):
@@ -404,7 +452,7 @@ def test_cli_decode(capsys):
     assert main(["ns", "decode", DRAFT_RENDERED.removesuffix("--video")]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["protocol"] == VERSION
-    assert out["prefix"] == ["openmoq", "mtt"]
+    assert out["prefix"] == ["example"]
     assert out["tracks"] == ["catalog", "video", "audio"]
     assert out["video"]["kbps"] == 2500 and out["audio"]["kbps"] == 128
     assert out["video"]["timing"] == {
@@ -423,8 +471,8 @@ def test_cli_decode_ladder(capsys):
 
 
 def test_cli_decode_reports_field(capsys):
-    assert main(["ns", "decode", _replace(BASE, 5, "700")]) == 2
-    assert "tuple field 5 (video_height)" in capsys.readouterr().err
+    assert main(["ns", "decode", _replace(BASE, 4, "700")]) == 2
+    assert "tuple field 4 (video_height)" in capsys.readouterr().err
 
 
 def test_cli_render(capsys):

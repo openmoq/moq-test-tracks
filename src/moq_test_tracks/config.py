@@ -17,11 +17,10 @@ from pathlib import Path
 
 import yaml
 
-from .spec.fields import TrackSpec
+from .spec.fields import CLIP_ID, GENERATED, NA, TrackSpec
 
 CONTRACT_VERSION = 2
 MODES = ("namespace", "publish")
-CLIP_ID = re.compile(r"[a-z0-9_]+")
 ATTRIBUTION = re.compile(r"[\w .()&/|©-]{1,80}")  # drawn verbatim by ffmpeg drawtext
 
 
@@ -87,9 +86,9 @@ class Config:
     policy: Policy
     clips: dict[str, Clip] = field(default_factory=dict)
 
-    def prefix(self, tool: str, clip: str | None = None) -> tuple[str, ...]:
-        """Namespace prefix for a tool, plus the clip id when the content is clip."""
-        return (*self.policy.namespace_prefix, tool, *((clip,) if clip else ()))
+    def prefix(self, tool: str) -> tuple[str, ...]:
+        """Namespace prefix for a tool."""
+        return (*self.policy.namespace_prefix, tool)
 
 
 def find_root(start: Path | None = None) -> Path:
@@ -127,6 +126,8 @@ def _clips(path: Path) -> dict[str, Clip]:
         problems = []
         if not CLIP_ID.fullmatch(cid):
             problems.append("id must match [a-z0-9_]+")
+        elif cid in (*GENERATED, NA):
+            problems.append(f"id must not be {', '.join(GENERATED)} or {NA}")
         if (clip.url is None) == (clip.video is None):
             problems.append("give either url or video")
         if clip.url is not None and not clip.url.startswith("https://"):
@@ -183,7 +184,7 @@ def load(root: Path | None = None) -> Config:
     per_key = p.get("per_key_defaults", {})
     caps = p.get("global", {})
     policy = Policy(
-        namespace_prefix=tuple(p.get("namespace_prefix", ("openmoq", "mtt"))),
+        namespace_prefix=tuple(p.get("namespace_prefix", ("openmoq",))),
         default_ttl_s=int(per_key.get("default_ttl_s", 1800)),
         max_ttl_s=int(per_key.get("max_ttl_s", 3600)),
         max_height=int(per_key.get("max_height", 1080)),
