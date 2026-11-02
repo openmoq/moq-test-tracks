@@ -1,4 +1,4 @@
-# ffmpeg_moq adapter
+# ffmpeg adapter
 
 Drives one `ffmpeg` process built from [openmoq/FFmpeg](https://github.com/openmoq/FFmpeg)
 with the MoQ muxer (`libavformat/moqenc.c`, on libmoq from
