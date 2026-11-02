@@ -1,6 +1,6 @@
 # Contract: docs/tool-contract.md#manifest
 contract_version: 2
-id: ffmpeg_moq
+id: ffmpeg
 name: ffmpeg MoQ muxer (libmoq)
 repository: https://github.com/openmoq/FFmpeg
 version: master@775bf198

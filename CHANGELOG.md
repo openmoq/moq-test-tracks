@@ -31,6 +31,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Changed
 
+- The ffmpeg adapter's tool id is `ffmpeg` (was `ffmpeg_moq`), so its namespaces start `openmoq/ffmpeg/`. It is not enabled yet.
 - **Breaking:** namespaces follow the draft's `mtt_00` layout.
   - **Version field:** `mtt_00` replaces `moq_test_tracks_00`. A namespace with the old version field is refused with an error that gives the new layout. The adapter manifests list `protocols: [mtt_00]`. moq-test-00 is unchanged.
   - **Fields:** `<prefix>/mtt_00/content/packaging/vcodec/height/fps/acodec/channels[/catalog/init/group_ms/audio_delivery/duration/video_tracks]`. Fields 1–7 are required. The catalog moves to optional field 8 (`msf` when omitted); init data, group duration, audio delivery, duration and video tracks stay fields 9–13. The cross-field rules are the same, with packaging now field 2.
