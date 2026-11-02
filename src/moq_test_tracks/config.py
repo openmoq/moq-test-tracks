@@ -17,7 +17,7 @@ from pathlib import Path
 
 import yaml
 
-from .spec.fields import CLIP_ID, CONTENTS, NA, TrackSpec
+from .spec.fields import CLIP_ID, CONTENTS, NA, RESERVED, TrackSpec
 
 CONTRACT_VERSION = 2
 MODES = ("namespace", "publish")
@@ -126,8 +126,8 @@ def _clips(path: Path) -> dict[str, Clip]:
         problems = []
         if not CLIP_ID.fullmatch(cid):
             problems.append("id must match [a-z0-9_]+")
-        elif cid in (*CONTENTS, NA):
-            problems.append(f"id must not be {', '.join(CONTENTS)} or {NA}")
+        elif cid in (*CONTENTS, *RESERVED, NA):
+            problems.append(f"id must not be a defined or reserved content value, or {NA}")
         if (clip.url is None) == (clip.video is None):
             problems.append("give either url or video")
         if clip.url is not None and not clip.url.startswith("https://"):

@@ -1,5 +1,6 @@
 # Clips this deployment serves for content `clip`. A clip's id is tuple
-# field 1, in place of clock, bars or noise:
+# field 1, in place of clock, bars or noise, and is not a value the draft
+# reserves (spec/fields.py RESERVED):
 #   openmoq/<tool>/mtt_00/<clip id>/…
 # `mtt media fetch <id>` records capture_s seconds from url into the runner
 # cache; jobs encode that recording to each requested shape.

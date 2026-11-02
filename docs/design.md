@@ -227,7 +227,7 @@ values.
 Synthetic content stays the default. For `clip`:
 
 - **Catalog of clips:** `media/sources.yaml` lists each clip: id
-  (`[a-z0-9_]+`, not `clock`, `bars`, `noise` or `clip`), title, HTTPS URL, `capture_s`, license and attribution
+  (`[a-z0-9_]+`, not a content value the draft defines or reserves), title, HTTPS URL, `capture_s`, license and attribution
   text.
 - **Not in git:** recordings run to hundreds of MB. In the runner container,
   `mtt media fetch <id>` records `capture_s` seconds of the URL's best
