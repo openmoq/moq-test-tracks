@@ -31,6 +31,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Changed
 
+- The runner sets its network namespace's UDP floors (`udp_rmem_min` and `udp_wmem_min` 256 KiB, `optmem_max` 1 MiB), which the host's tuning cannot reach through the bridge networks. This needs Linux 6.8 or later on the host.
 - **Breaking:** tokens replace API keys; every `mtt_…` key stops working.
   - **Format:** `mtt1_…`, a CWT in a COSE_Mac0 (HMAC-SHA256) carrying the holder, role, limits tier (`standard` or `unrestricted`), the relays it may publish to, and an expiry (30 days by default, at most 365; at most 30 for `unrestricted`). It is verified by its signature under `MTT_TOKEN_SECRET`, which deploy.sh generates; only revoked token ids are looked up.
   - **Relay grants:** a job may use only a relay its token names. `/api/v1/relays` lists those, and a job without `relay` gets `moqx-main` if granted, else the token's first relay.
