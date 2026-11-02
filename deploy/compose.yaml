@@ -65,6 +65,12 @@ services:
       MTT_VAR: /var/lib/mtt/var
     volumes: [mtt-runner:/var/lib/mtt]
     networks: [internal, egress]
+    # Per-network-namespace UDP floors; the host's global socket limits already
+    # apply. optmem_max is per namespace only from Linux 6.8.
+    sysctls:
+      net.ipv4.udp_rmem_min: 262144
+      net.ipv4.udp_wmem_min: 262144
+      net.core.optmem_max: 1048576
     cpus: 8
     mem_limit: 8g
     pids_limit: 4096
