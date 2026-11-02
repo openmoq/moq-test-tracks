@@ -20,7 +20,7 @@ from moq_test_tracks.runner.agent import create_app, sweep_orphans
 
 TOKEN = "t0ken"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
-NS = "openmoq/mtt/fake/moq_test_tracks_00/clock/msf/loc/h264/180/30/aac/2/catalog/1000"
+NS = "openmoq/fake/mtt_00/clock/loc/h264/180/30/aac/2/msf/catalog/1000"
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def root(tmp_path):
         )
     )
     (tmp_path / "config" / "policy.yaml").write_text(
-        "namespace_prefix: [openmoq, mtt]\nglobal: {max_jobs: 2, max_live_encodes: 2}\n"
+        "namespace_prefix: [openmoq]\nglobal: {max_jobs: 2, max_live_encodes: 2}\n"
         "per_key_defaults: {max_jobs: 1}\n"
     )
     (tmp_path / "media").mkdir()
@@ -243,7 +243,7 @@ def test_job_cap(client):
     "body, text",
     [
         (_job("bars"), "content: no"),  # the adapter refuses
-        ({**_job(), "namespace": NS.replace("/180/", "/700/")}, "tuple field 5"),
+        ({**_job(), "namespace": NS.replace("/180/", "/700/")}, "tuple field 4"),
         ({**_job(), "relay": "elsewhere"}, "not in the allowlist"),
         ({**_job(), "tool": "nope"}, "unknown or disabled tool"),
         ({**_job(), "ttl_s": 999999}, "ttl"),
@@ -256,7 +256,7 @@ def test_rejections(client, body, text):
     assert any(text in e for e in r.json()["detail"]["errors"])
 
 
-CLIP_NS = NS.replace("/fake/", "/fake/demo/").replace("_00/clock/", "_00/clip/")
+CLIP_NS = NS.replace("/clock/", "/demo/")
 
 
 def test_clip_jobs(client, root):
@@ -264,7 +264,7 @@ def test_clip_jobs(client, root):
     r = client.post("/check", json=clip_job, headers=AUTH)
     assert r.status_code == 422 and "clip demo has not been fetched" in r.text
     other = {**_job(), "namespace": CLIP_NS.replace("/demo/", "/other/")}
-    assert "configured clip id" in client.post("/check", json=other, headers=AUTH).text
+    assert "unknown clip other" in client.post("/check", json=other, headers=AUTH).text
     clips = root / "var" / "cache" / "clips"
     clips.mkdir(parents=True)
     (clips / "demo-abc.mkv").write_bytes(b"x")

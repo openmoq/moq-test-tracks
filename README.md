@@ -16,12 +16,15 @@ content). The service encodes and publishes matching media to a relay with
 the publisher tool of your choice.
 
 ```
-openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/loc/h264/720/30/aac/2
-└──── prefix ─────┘ └──── version ───┘ └─── required fields 1–8 ──────┘
+openmoq/aiomoqt/mtt_00/clock/loc/h264/720/30/aac/2
+└─── prefix ──┘ └─┬──┘ └─── required fields 1–7 ─┘
+               version
 ```
 
-Optional fields 9 to 13 (init data, group duration, audio delivery, duration,
-video tracks) follow when they differ from the values the draft gives them.
+The required fields are content, packaging, video codec, height, frame rate,
+audio codec and channels. Optional fields 8 to 13 (catalog, init data, group
+duration, audio delivery, duration, video tracks) follow when they differ
+from the values the draft gives them.
 
 > **Status: in testing** at <https://moq-test.ci.openmoq.org>. Access is by
 > token; see [Getting started](#getting-started). The architecture, security
@@ -63,9 +66,11 @@ video tracks) follow when they differ from the values the draft gives them.
    namespace; the track names are `catalog`, `video` and `audio`. On
    moqx-main, subscribe with draft 18 (see [docs/api.md](docs/api.md#subscribing)).
 
-The service names its namespaces `openmoq/mtt/<tool>/moq_test_tracks_00/…`,
-plus a clip id after the tool for clips. The draft's examples use the prefix
-`openmoq/mtt`; the fields from `moq_test_tracks_00` on are the same.
+The service names its namespaces `openmoq/<tool>/mtt_00/…`. For a clip,
+field 1 (`content=<clip id>`) is the clip id instead of `clock`, `bars` or
+`noise`, as in
+`openmoq/aiomoqt/mtt_00/bbb_4k30/cmaf/h264/1080/30/aac/2`. The draft's
+examples use the prefix `example`; the fields from `mtt_00` on are the same.
 
 ## Layout
 

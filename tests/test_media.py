@@ -60,11 +60,15 @@ def test_attribution_allows_license_credits(tmp_path):
     assert config._clips(tmp_path / "sources.yaml")["c1"].attribution == credit
 
 
-def test_bad_clip_id(tmp_path):
+@pytest.mark.parametrize(
+    "cid, problem",
+    [("Bad-Id", r"\[a-z0-9_\]"), *((cid, "must not be") for cid in ("noise", "clip", "_"))],
+)
+def test_bad_clip_id(tmp_path, cid, problem):
     (tmp_path / "sources.yaml").write_text(
-        "clips:\n  Bad-Id:\n    url: https://x\n    license: l\n    attribution: ok\n"
+        f"clips:\n  {cid}:\n    url: https://x\n    license: l\n    attribution: ok\n"
     )
-    with pytest.raises(ValueError, match=r"\[a-z0-9_\]"):
+    with pytest.raises(ValueError, match=problem):
         config._clips(tmp_path / "sources.yaml")
 
 

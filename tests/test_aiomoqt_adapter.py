@@ -21,7 +21,7 @@ from moq_test_tracks.runner.request import build
 from moq_test_tracks.spec import decode, from_slash
 
 ADAPTER = Path(__file__).resolve().parents[1] / "adapters" / "aiomoqt" / "run"
-NS = "openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/loc/h264/360/30/aac/2"
+NS = "openmoq/aiomoqt/mtt_00/clock/loc/h264/360/30/aac/2"
 RELAY = Relay(
     "r", "r", {"moqt": "moqt://relay:4433", "webtransport": "https://relay:4433/moq"}, (18,), 18
 )

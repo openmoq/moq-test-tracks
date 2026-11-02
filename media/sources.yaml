@@ -1,6 +1,6 @@
-# Clips this deployment serves for content `clip`. A clip's id is the
-# namespace prefix field after the tool id:
-#   openmoq/mtt/<tool>/<clip id>/moq_test_tracks_00/…
+# Clips this deployment serves for content `clip`. A clip's id is tuple
+# field 1, in place of clock, bars or noise:
+#   openmoq/<tool>/mtt_00/<clip id>/…
 # `mtt media fetch <id>` records capture_s seconds from url into the runner
 # cache; jobs encode that recording to each requested shape.
 clips:

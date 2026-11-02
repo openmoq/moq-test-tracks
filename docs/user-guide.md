@@ -61,7 +61,7 @@ The reply describes the job:
 
 ```json
 {"id": "j_5b4790bcdb62", "state": "starting",
- "namespace": "openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/loc/h264/720/30/aac/2",
+ "namespace": "openmoq/aiomoqt/mtt_00/clock/loc/h264/720/30/aac/2",
  "tracks": ["catalog", "video", "audio"], "relay": "moqx-main",
  "url": "moqt://moqx-main.ci.openmoq.org:4433", "draft": 18, "ttl_s": 600, ...}
 ```
@@ -95,7 +95,7 @@ draft's value.
 | Audio only | `preset=audio` |
 | 4 audio frames per group | `adel=4` |
 | No catalog, decoder config in the media | `cat=none` |
-| Big Buck Bunny at 1080p30, CMAF | `clip=bbb_4k30&h=1080&pkg=cmaf` |
+| Big Buck Bunny at 1080p30, CMAF | `content=bbb_4k30&h=1080&pkg=cmaf` |
 | Ten minutes, then end | `dur=600` |
 
 Preview the namespace without starting anything (no token needed):
@@ -115,9 +115,15 @@ Or pass a namespace you already have, in a JSON body:
 
 ```sh
 curl -s -X POST -H "$H" -H "Content-Type: application/json" "$U/api/v1/jobs" -d \
-  '{"namespace": "openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/cmaf/h264/1080/30/aac/2",
+  '{"namespace": "openmoq/aiomoqt/mtt_00/clock/cmaf/h264/1080/30/aac/2",
     "relay": "us-ord-3", "draft": 18, "ttl_s": 900}'
 ```
+
+The fields after `openmoq/<tool>/mtt_00` are content, packaging, video
+codec, height, frame rate, audio codec and channels, then the optional
+catalog, init data, group ms, audio delivery, duration and video tracks. A
+clip's id takes the content field, and `content=<clip id>` selects it:
+`openmoq/aiomoqt/mtt_00/bbb_4k30/cmaf/h264/1080/30/aac/2`.
 
 The service always replies with the namespace in its shortest form and
 publishes that one. `GET /api/v1/presets` lists presets and parameters,
@@ -145,7 +151,7 @@ Subscribe with any MoQT player or client to the job's `namespace` at its
 
 ```sh
 python -m aiomoqt.tools.sub_media moqt://moqx-main.ci.openmoq.org:4433 \
-  -N openmoq/mtt/aiomoqt/moq_test_tracks_00/clock/msf/loc/h264/720/30/aac/2 --draft 18 --analyze
+  -N openmoq/aiomoqt/mtt_00/clock/loc/h264/720/30/aac/2 --draft 18 --analyze
 ```
 
 On moqx relays, subscribe with draft 18: offered both 16 and 18, moqx picks

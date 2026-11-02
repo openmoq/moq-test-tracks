@@ -24,7 +24,7 @@ from moq_test_tracks.runner.supervisor import EXIT_OK, Job, mp4_complete
 from moq_test_tracks.spec import decode, from_slash
 
 ROOT = Path(__file__).resolve().parents[1]
-NS = "openmoq/mtt/fake/moq_test_tracks_00/clock/msf/loc/h264/180/30/aac/2/catalog/1000"
+NS = "openmoq/fake/mtt_00/clock/loc/h264/180/30/aac/2/msf/catalog/1000"
 RELAY = Relay("local", "local", {"moqt": "moqt://127.0.0.1:4433"}, (18,), 18)
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
 
@@ -77,7 +77,7 @@ def fake_tool(tmp_path):
     adapter.write_text(FAKE_ADAPTER)
     adapter.chmod(0o755)
     return Tool(
-        "fake", "fake", "0", ("moq_test_tracks_00",), ("mpegts", "mp4"),
+        "fake", "fake", "0", ("mtt_00",), ("mpegts", "mp4"),
         signal.SIGINT, 0.5, {}, adapter, 1,
     )  # fmt: skip
 
@@ -307,7 +307,7 @@ def test_config_loads_repo():
 
 def test_job_errors(fake_tool):
     spec = decode(from_slash(NS)).spec
-    policy = config.Policy(("openmoq", "mtt"), 1800, 3600, 720, 30, 4000)
+    policy = config.Policy(("openmoq",), 1800, 3600, 720, 30, 4000)
     caps = dataclasses.replace(
         fake_tool, capabilities={"video_codec": ["av1"], "mode": ["namespace"], "draft": [16]}
     )

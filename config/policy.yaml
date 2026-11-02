@@ -1,6 +1,6 @@
 # Service limits. Every token gets per_key_defaults; admin tokens and tokens of
 # tier unrestricted may exceed them, never the global caps (docs/admin.md).
-namespace_prefix: [openmoq, mtt]  # tool id is appended
+namespace_prefix: [openmoq]  # tool id is appended
 
 global:
   max_jobs: 16

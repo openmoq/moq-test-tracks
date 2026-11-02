@@ -13,13 +13,13 @@ from ..spec.namespace import decode
 # Query parameter -> field name (docs/design.md).
 PARAMS = {
     "content": "content",
-    "cat": "catalog",
     "pkg": "packaging",
     "vc": "video_codec",
     "h": "video_height",
     "fps": "frame_rate",
     "ac": "audio_codec",
     "ch": "audio_channels",
+    "cat": "catalog",
     "init": "init_data",
     "gop": "group_ms",
     "adel": "audio_delivery",
@@ -27,13 +27,14 @@ PARAMS = {
     "vt": "video_tracks",
 }
 
-# Parameters the draft no longer has, with what replaced them.
+# Parameters the API no longer takes, with what replaced them.
 REMOVED = {
     "vbr": "video bitrate follows from height and frame rate",
     "abr": "audio bitrate follows from codec and channels",
     "vfwd": "video always goes one stream per group",
     "afwd": "use adel=dgram for datagram audio",
     "afpg": "use adel=N for N audio frames per group",
+    "clip": "use content=<clip id>",
 }
 
 PRESETS = {
@@ -72,6 +73,8 @@ def resolve(params: dict[str, str], preset: str | None = None) -> TrackSpec:
     unknown = sorted(set(params) - set(PARAMS))
     if unknown:
         raise PresetError(f"unknown parameters: {', '.join(unknown)}")
+    if params.get("content") == "clip":
+        raise PresetError("content takes the clip id: content=<clip id>")
     if preset is not None and preset not in PRESETS:
         raise PresetError(f"unknown preset {preset}; one of {', '.join(PRESETS)}")
     p = {**DEFAULTS, **(PRESETS.get(preset, {}) if preset else {}), **params}
