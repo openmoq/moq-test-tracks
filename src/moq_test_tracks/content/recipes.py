@@ -16,8 +16,6 @@ from ..spec.fields import AUDIO_FRAME_SAMPLES, AUDIO_SAMPLE_RATE, TrackSpec
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 LOOP_TARGET_S = 60
 LOOP_MAX_S = 300
-# Encoder delay in samples, which the mp4 carries as extra leading audio.
-AUDIO_PRIMING = {"aac": 1024, "opus": 120}
 
 FORMATS = ("mpegts", "mp4")
 
@@ -30,17 +28,24 @@ def _rate(fps: Fraction) -> str:
     return f"{fps.numerator}/{fps.denominator}"
 
 
-def _video_input(spec: TrackSpec) -> list[str]:
+def _video_input(spec: TrackSpec, start_us: int | None) -> list[str]:
     size = f"{spec.video_width}x{spec.video_height}"
     rate = _rate(spec.fps)
     if spec.content == "clock":
         frame_s = float(1 / spec.fps)
         fontsize = max(12, spec.video_height // 18)
+        if start_us is None:
+            clock, phase = "%{gmtime\\:%T}", 0
+        else:
+            # Frame time from the stream start: the capture time the timestamps carry.
+            day_s = start_us % 86_400_000_000 / 1_000_000
+            clock, phase = f"%{{pts\\:hms\\:{day_s:.6f}\\:24HH}}", start_us % 1_000_000 / 1_000_000
         graph = (
             f"testsrc2=size={size}:rate={rate},"
             f"drawtext=fontfile={FONT}:fontsize={fontsize}:fontcolor=white:box=1:boxcolor=black@0.6"
-            ":x=(w-tw)/2:y=h-2*th:text='%{gmtime\\:%T} f %{n}',"
-            f"drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='lt(mod(t,1),{frame_s:.6f})'"
+            f":x=(w-tw)/2:y=h-2*th:text='{clock} f %{{n}}',"
+            f"drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill"
+            f":enable='lt(mod(t+{phase:.6f},1),{frame_s:.6f})'"
         )
     elif spec.content == "bars":
         graph = f"smptehdbars=size={size}:rate={rate}"
@@ -51,11 +56,13 @@ def _video_input(spec: TrackSpec) -> list[str]:
     return ["-f", "lavfi", "-i", graph]
 
 
-def _audio_input(spec: TrackSpec) -> list[str]:
+def _audio_input(spec: TrackSpec, start_us: int | None) -> list[str]:
     layout = "mono" if spec.audio_channels == 1 else "stereo"
     rate = AUDIO_SAMPLE_RATE
     if spec.content == "clock":
-        expr = "if(lt(mod(t\\,1)\\,0.1)\\,0.5*sin(2*PI*1000*t)\\,0.3*sin(2*PI*440*t))"
+        phase = 0 if start_us is None else start_us % 1_000_000 / 1_000_000
+        beat = f"mod(t+{phase:.6f}\\,1)"
+        expr = f"if(lt({beat}\\,0.1)\\,0.5*sin(2*PI*1000*t)\\,0.3*sin(2*PI*440*t))"
         graph = f"aevalsrc=exprs={expr}:s={rate}:c={layout}"
     elif spec.content == "bars":
         graph = f"sine=frequency=1000:sample_rate={rate},aformat=channel_layouts={layout}"
@@ -126,17 +133,16 @@ def _lcm(a: Fraction, b: Fraction) -> Fraction:
 
 
 def loop_seconds(spec: TrackSpec, target: int | None = None) -> Fraction:
-    """Loop length of whole video groups and whole audio groups, so both tracks keep their
-    cadence across the seam: the longest within target (default LOOP_TARGET_S, which a clip
+    """Loop length of whole video groups and whole audio frames, so both tracks stay on their
+    frame grid across the seam: the longest within target (default LOOP_TARGET_S, which a clip
     sets to its window), else one unit. When that unit exceeds LOOP_MAX_S, whole video
     groups only."""
     target = Fraction(target or LOOP_TARGET_S)
     units = []
     if spec.group_ms is not None:
         units.append(Fraction(spec.group_ms, 1000))
-    if spec.has_audio and spec.audio_frames_per_group:
-        samples = spec.audio_frames_per_group * AUDIO_FRAME_SAMPLES[spec.audio_codec]
-        units.append(Fraction(samples, AUDIO_SAMPLE_RATE))
+    if spec.has_audio:
+        units.append(Fraction(AUDIO_FRAME_SAMPLES[spec.audio_codec], AUDIO_SAMPLE_RATE))
     if not units:
         return target
     unit = units[0]
@@ -148,11 +154,16 @@ def loop_seconds(spec: TrackSpec, target: int | None = None) -> Fraction:
 
 
 def source_command(
-    spec: TrackSpec, fmt: str, output: str | Path, clip: dict | None = None
+    spec: TrackSpec,
+    fmt: str,
+    output: str | Path,
+    clip: dict | None = None,
+    start_us: int | None = None,
 ) -> list[str]:
     """ffmpeg argv producing the spec's media: a live MPEG-TS stream, or a
     loopable non-fragmented mp4 of loop_seconds() length. Clip content reads
-    the request's clip mezzanine ({"path", "attribution"})."""
+    the request's clip mezzanine ({"path", "attribution"}). start_us, µs since
+    the Unix epoch of the first frame, sets the clock content's time."""
     if fmt not in FORMATS:
         raise RecipeError(f"unknown source format {fmt}")
     argv = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "warning", "-y"]
@@ -170,10 +181,10 @@ def source_command(
             encoders += _audio_encoder(spec)
     else:
         if spec.has_video:
-            inputs += (["-re"] if live else []) + _video_input(spec)
+            inputs += (["-re"] if live else []) + _video_input(spec, start_us)
             encoders += _video_encoder(spec, fmt)
         if spec.has_audio:
-            inputs += (["-re"] if live else []) + _audio_input(spec)
+            inputs += (["-re"] if live else []) + _audio_input(spec, start_us)
             encoders += _audio_encoder(spec)
         for i in range(int(spec.has_video) + int(spec.has_audio)):
             maps += ["-map", str(i)]
@@ -186,9 +197,7 @@ def source_command(
         argv += ["-video_track_timescale", str(spec.video_timing().timescale)]
     if spec.has_audio:
         # Stamped by sample count, as a mezzanine's millisecond timestamps leave
-        # uneven frame durations; shortened by the priming so that, with it, the
-        # track spans exactly the loop.
-        samples = int(seconds * AUDIO_SAMPLE_RATE) - AUDIO_PRIMING[spec.audio_codec]
-        argv += ["-filter:a", f"atrim=end_sample={samples},asetpts=N/SR/TB"]
+        # uneven frame durations.
+        argv += ["-filter:a", "asetpts=N/SR/TB"]
     argv += ["-t", f"{float(seconds):.3f}", "-movflags", "+faststart", "-f", "mp4", str(output)]
     return argv

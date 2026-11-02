@@ -31,6 +31,10 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Changed
 
+- aiomoqt 0.14.0 on aiopquic 0.7.0, with its epoch-anchored timing.
+  - **Live start:** the runner picks each live run's start, the first video group boundary at least 5 s ahead, and passes it to ffmpeg and to the tool as `source.start_us` (pub_media `--start-at`). Restarts pick a new one. The clock content shows that capture time, with the flash and beep on its whole seconds.
+  - **Loops:** cached loops are whole video groups and whole audio frames (audio groups may cross the seam), and keep the encoder priming, which the tool skips by the edit list.
+  - **Adapter:** `-t 0` when duration is 0, so pub_media runs until the service stops it at the TTL; `--catalog-bitrate` and `--catalog-audio-bitrate` on every catalog. `anchor` events report the start and each track's timing.
 - **Breaking:** namespaces follow the draft's `mtt_00` layout.
   - **Version field:** `mtt_00` replaces `moq_test_tracks_00`. A namespace with the old version field is refused with an error that gives the new layout. The adapter manifests list `protocols: [mtt_00]`. moq-test-00 is unchanged.
   - **Fields:** `<prefix>/mtt_00/content/packaging/vcodec/height/fps/acodec/channels[/catalog/init/group_ms/audio_delivery/duration/video_tracks]`. Fields 1–7 are required. The catalog moves to optional field 8 (`msf` when omitted); init data, group duration, audio delivery, duration and video tracks stay fields 9–13. The cross-field rules are the same, with packaging now field 2.
