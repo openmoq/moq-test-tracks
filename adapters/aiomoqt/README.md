@@ -17,6 +17,7 @@ publishes but does not encode, so the service supplies the source media.
 | Timing (draft §Timing) | `--timestamp-mapping` |
 | packaging `loc`, video `h264` / `h264cb` | source `mpegts` → `--ts <fifo> --ts-cadence fps=N[/D],gop=M --start-at <source start_us>` |
 | other `loc` video; `cmaf`, `locmaf`; content `clip` | source `mp4` → `--mp4 <file> --loop --packaging loc\|cmaf\|locmaf` |
+| video tracks `altN`, `viewN` | `--video-alt one` (ladder) or `each` (views); per track, in order: `--video-label`, `--catalog-bitrate`, and with `mp4` a `--mp4 <file>` |
 | audio delivery `N` | `--audio-frames-per-group N` |
 | audio delivery `dgram` | `--audio-frames-per-group 1 -D` (LOC only) |
 | audio codec `none` | `--no-audio` |
@@ -42,5 +43,4 @@ aiomoqt supports them:
 | on-demand prefix serving | `--serve-prefix` (draft §Publisher Behavior, on demand) |
 | a GOAWAY's New Session URI is followed to any host, off the relay allowlist | an allowlist for GOAWAY URIs (aiomoqt 0.15.0 or later) |
 | on a GOAWAY to the same address the old session stays open until the redial succeeds, so the relay drains for its full timeout | close the old session on a same-address GOAWAY |
-| video tracks `altN` (ladders) and `viewN` (views) | publish several video tracks in one namespace and catalog (draft field 13) |
 | datagram audio with `cmaf` packaging | `-D` with CMAF |

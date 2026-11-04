@@ -41,8 +41,6 @@ def plan(req, python=sys.executable):
     has_audio = f["audio_codec"] != "none"
     if f["content"] == "clip" and not req.get("clip"):
         refuse("content", "clip content needs the request's clip")
-    if f["video_tracks"] not in (None, "1"):
-        refuse("video_tracks", "pub_media publishes one video track")
     endpoints = req["endpoints"]
     if f["audio_delivery"] == "dgram" and packaging != "loc":
         refuse("audio_delivery", "datagram audio is LOC only")
@@ -58,6 +56,7 @@ def plan(req, python=sys.executable):
     source = "mpegts" if live else "mp4"
     src = req.get("source") or {}
     path = src.get("path", "<source>")
+    video = req.get("video") or []
     argv = [python, "-u", "-m", "aiomoqt.tools.pub_media"]
     argv += [e["url"] for e in endpoints]
     argv += ["-N", "/".join(req["namespace"]), "--draft", str(endpoints[0]["draft"])]
@@ -71,15 +70,21 @@ def plan(req, python=sys.executable):
         if src.get("start_us") is not None:
             argv += ["--start-at", str(src["start_us"])]
     else:
-        argv += ["--mp4", path, "--loop", "--packaging", packaging]
+        for p in src.get("paths") or [path] * max(1, len(video)):
+            argv += ["--mp4", p]
+        argv += ["--loop", "--packaging", packaging]
+    if len(video) > 1:
+        argv += ["--video-alt", "one" if f["video_tracks"].startswith("alt") else "each"]
+        for t in video:
+            argv += ["--video-label", t["label"]]
     if f["catalog"] == "none":
         argv.append("--no-catalog")
     else:
         argv += ["--target-latency", str(TARGET_LATENCY_MS)]
         if packaging == "loc":
             argv += ["--init-data", f["init_data"]]
-        if f["video_codec"] != "none":
-            argv += ["--catalog-bitrate", str(f["video_kbps"] * 1000)]
+        for t in video:
+            argv += ["--catalog-bitrate", str(t["kbps"] * 1000)]
         if has_audio:
             argv += ["--catalog-audio-bitrate", str(f["audio_kbps"] * 1000)]
     if not has_audio:

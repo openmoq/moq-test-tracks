@@ -19,10 +19,12 @@ its holder's role, limits tier, the relays it may publish to, and its expiry;
 | `admin` | `run`, plus stop any job and stop all jobs |
 
 A `standard` token gets the per-token limits in `config/policy.yaml` (today:
-height up to 1080, up to 60 fps, video up to 8000 kbps, TTL up to 1 h, 16
-jobs). An `unrestricted` or admin token may exceed them up to the global caps
-(16 jobs in total, 2 live encodes, TTL up to 24 h). A job may only use a
-relay the token grants.
+height up to 1080, up to 60 fps, video up to 16000 kbps across a job's video
+tracks, TTL up to 1 h, 16 jobs). An `unrestricted` or admin token may exceed
+them up to the global caps (16 jobs in total, 4 live encodes, TTL up to 24 h).
+Live encodes are counted in 1080p30 encodes: a live job counts its video
+tracks' pixel rate (720p30 is 0.44, 1080p60 is 2), at least 0.25. Cached loops
+count nothing. A job may only use a relay the token grants.
 
 Send the token in a header:
 
@@ -158,7 +160,7 @@ tuple field.
 |--------|---------|
 | 401 | no token, or an invalid, expired or revoked one |
 | 403 | the role is too low, a relay the token does not grant, a stop by someone other than the owner, or a cross-origin cookie request |
-| 422 | invalid parameters or namespace, a relay or draft not allowed, or the tool cannot produce it |
+| 422 | invalid parameters or namespace, a relay or draft not allowed, the tool cannot produce it, or the job alone exceeds the live encode cap |
 | 429 | a cap is reached (jobs, live encodes, per-token jobs); retry later |
 | 503 | the runner is unreachable |
 
@@ -166,7 +168,9 @@ tuple field.
 
 Subscribe with any MoQT client to the job's namespace on the job's relay. Track
 names are `catalog`, `video` and `audio`; ladders and views add `video_1`,
-`video_2` and so on.
+`video_2` and so on. The catalog labels each video track (`720p`, `view 2`)
+and puts a ladder's tracks in one altGroup and each view in its own. Clips
+have one view, so `viewN` is refused for a clip.
 
 - **moqx-main:** subscribe with draft 18. moqx negotiates draft 16 with a
   client that offers both 16 and 18, and the draft-18 timestamp properties

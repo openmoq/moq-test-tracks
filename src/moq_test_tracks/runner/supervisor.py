@@ -22,7 +22,7 @@ from pathlib import Path
 
 from ..config import CONTRACT_VERSION, Tool
 from ..content import recipes
-from ..spec.fields import TrackSpec
+from ..spec.fields import TrackSpec, VideoTrack
 
 EXIT_OK = 0
 EXIT_REFUSED = 64
@@ -208,24 +208,34 @@ class Job:
             }  # fmt: skip
             return
         if fmt == "mp4":
-            clip = self.request.get("clip")
-            key = hashlib.sha256(
-                json.dumps(recipes.source_command(self.spec, "mp4", "OUT", clip)).encode()
-            ).hexdigest()[:24]
-            path = self.cache_dir / f"{key}.mp4"
-            async with _RENDERS.setdefault(key, asyncio.Lock()):
-                if not mp4_complete(path):
-                    await self._render_mp4(path)
-            self.request["source"] = {"format": fmt, "path": str(path), "fifo": False, "loop": True}
+            # One loop per video track of a set; the first carries the audio.
+            tracks = self.spec.video_set()
+            paths = [await self._cached_mp4(t) for t in (tracks if len(tracks) > 1 else [None])]
+            self.request["source"] = {
+                "format": fmt, "path": str(paths[0]), "paths": [str(p) for p in paths],
+                "fifo": False, "loop": True,
+            }  # fmt: skip
             return
         raise JobError(f"no source stage for format {fmt}")
 
-    async def _render_mp4(self, path: Path) -> None:
+    async def _cached_mp4(self, track: VideoTrack | None) -> Path:
+        clip = self.request.get("clip")
+        argv = recipes.source_command(self.spec, "mp4", "OUT", clip, track=track)
+        key = hashlib.sha256(json.dumps(argv).encode()).hexdigest()[:24]
+        path = self.cache_dir / f"{key}.mp4"
+        async with _RENDERS.setdefault(key, asyncio.Lock()):
+            if not mp4_complete(path):
+                await self._render_mp4(path, track)
+        return path
+
+    async def _render_mp4(self, path: Path, track: VideoTrack | None) -> None:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f"{path.stem}.{self.request['job_id']}.part.mp4")
         try:
             proc = await asyncio.create_subprocess_exec(
-                *recipes.source_command(self.spec, "mp4", tmp, self.request.get("clip")),
+                *recipes.source_command(
+                    self.spec, "mp4", tmp, self.request.get("clip"), track=track
+                ),
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,

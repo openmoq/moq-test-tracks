@@ -109,6 +109,7 @@ No secrets are ever passed to a tool.
                 "clock", "loc", "h264", "720", "30", "aac", "2"],
   "namespace_safe": "openmoq-aiomoqt-mtt_00-clock-loc-h264-720-30-aac-2",
   "tracks": ["catalog", "video", "audio"],
+  "video": [{"track": "video", "width": 1280, "height": 720, "kbps": 2500, "label": null}],
   "fields": {
     "content": "clock", "catalog": "msf", "packaging": "loc",
     "video_codec": "h264", "video_height": 720, "video_width": 1280,
@@ -134,6 +135,10 @@ No secrets are ever passed to a tool.
   `namespace_safe` is its MoQT §8.8 rendering, for log and file names.
 - **`fields`** are the decoded characteristic fields. Fields that don't apply
   are `null`. `frame_rate` stays a string, so that `29_97` is unambiguous.
+- **`video`** lists the video tracks in Track Name order: size, target
+  bitrate and catalog label. A ladder's labels are `720p` and so on, views'
+  `view 1` and so on; one video track has label `null`. It is empty without
+  video.
 - **`endpoints`** has one entry unless the manifest's `max_endpoints` is
   more than 1.
 - **`clip`** is set when `content` is `clip`:
@@ -145,7 +150,8 @@ No secrets are ever passed to a tool.
   asked for ([Source media](#source-media)). It is `null` when check mode
   asked for none. In check mode itself, `source` is always `null`. A live
   source with video has `start_us`: the capture time of its first frame, in
-  µs since the Unix epoch, on a video group boundary.
+  µs since the Unix epoch, on a video group boundary. An `mp4` source has
+  `paths`, one file per video track in Track Name order; the first is `path`.
 
 ## What the tool must publish
 
@@ -179,6 +185,8 @@ These rules hold for every tool. They restate the draft operationally.
   and parameters that match `fields`. With `cmaf` or `locmaf` packaging it
   uses the CMSF extensions.
 - Every track is live (`isLive` true) with `targetLatency` 250.
+- With several video tracks, each has its `label` from `video`; a ladder's
+  tracks share one `altGroup`, and each view has its own.
 - Carry decoder initialization data only where `init_data` says:
   - `catalog`: inline in the catalog's initialization data list;
   - `track`: in the VIDEO_CONFIG or AUDIO_CONFIG Track Property;
@@ -255,11 +263,11 @@ values. Every source format guarantees:
 
 | `format` | Delivery | Notes |
 |----------|----------|-------|
-| `mpegts` | FIFO, live | H.264/H.265 with AUDs, AAC in ADTS, or Opus |
+| `mpegts` | FIFO, live | H.264/H.265 with AUDs, AAC in ADTS, or Opus. Several video tracks are one video stream each, in Track Name order, before the audio. |
 | `annexb` | two FIFOs, live: `video_path` (Annex B) and `audio_path` (ADTS AAC or Ogg Opus) | For tools that take elementary streams. A path is `null` when the namespace has no video or no audio. |
 | `fmp4` | FIFO, live | An init segment, then one moof+mdat per frame (CMAF chunks) |
 | `flv` | FIFO, live | H.264 + AAC only |
-| `mp4` | file, `loop: true` | Non-fragmented and not interleaved. Its length is a whole number of video groups and of audio frames, so the tool can loop it seamlessly. Cached and shared between jobs. |
+| `mp4` | file, `loop: true` | Non-fragmented and not interleaved. Its length is a whole number of video groups and of audio frames, so the tool can loop it seamlessly. Cached and shared between jobs. Several video tracks are one file each (`paths`), all the same length; the first also carries the audio. |
 
 For a live source, the service starts ffmpeg writing to the FIFO before
 starting the adapter. The FIFO only produces data while the tool reads it.

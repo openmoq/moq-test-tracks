@@ -220,7 +220,8 @@ values.
   sample count; the tool skips the encoder's priming by the edit list. It is stored as
   `/cache/<sha256>.mp4` with LRU eviction by size. This is much cheaper than
   live encoding.
-- **Slots:** live encodes have their own pool, smaller than the job pool.
+- **Slots:** live encodes have their own pool, counted in 1080p30 encodes by
+  the pixel rate of a job's video tracks.
 
 ### Real media (`clip`)
 
@@ -387,7 +388,8 @@ To raise with reviewers; these become GitHub issues once the repo is public.
    `streamMapping` ([#211](https://github.com/moq-wg/msf/pull/211)) would be
    set to match if it lands.
 4. **ABR.** The draft's field 13 expresses ladders (`altN`) and views
-   (`viewN`). No tool here publishes more than one video track yet.
+   (`viewN`). The aiomoqt adapter publishes both; clip views wait for clips
+   with several synchronized views.
 5. **Profile and level.** Should tuple field 3 accept codec strings as well
    as short names? Codec strings contain `.`, which the §8.8 representation
    escapes.

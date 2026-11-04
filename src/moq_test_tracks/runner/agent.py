@@ -20,6 +20,7 @@ import time
 from collections import Counter, deque
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -44,6 +45,9 @@ RESTART_BACKOFF_S = 1.0
 RESTART_BACKOFF_MAX_S = 30.0
 RESTART_MAX = 20
 RESTART_STABLE_S = 60.0
+
+LIVE_UNIT = 1920 * 1080 * 30  # pixel rate of one 1080p30 encode
+LIVE_FLOOR = Fraction(1, 4)
 
 
 class JobIn(BaseModel):
@@ -188,6 +192,8 @@ class Registry:
         clip = self.cfg.clips.get(spec.clip or "")
         if clip is None:
             raise Rejected(422, [f"unknown clip {spec.clip}"])
+        if spec.is_views:
+            raise Rejected(422, [f"clip {clip.id} has one view"])
         mezz = media.mezzanine(self.cache, clip.id)
         if mezz is None:
             raise Rejected(
@@ -256,10 +262,20 @@ class Registry:
                 raise Rejected(429, [f"this token is at its limit of {limit} jobs"])
         job = self._job(body, tool, relay, namespace, spec, draft, ttl, clip, self.work)
         check = await self._adapter_check(job)
-        live = sum(1 for e in active if e.check.source == "mpegts")
-        if check.source == "mpegts" and live >= cfg.policy.max_live_encodes:
-            limit = cfg.policy.max_live_encodes
-            raise Rejected(429, [f"the runner is at its limit of {limit} live encodes"])
+        live = sum(_live_encodes(e.check, e.job.spec) for e in active)
+        need, limit = _live_encodes(check, spec), cfg.policy.max_live_encodes
+        if need > limit:
+            raise Rejected(
+                422, [f"{float(need):.2f} live encodes exceed the runner's limit of {limit:g}"]
+            )
+        if need and live + need > limit:
+            raise Rejected(
+                429,
+                [
+                    f"the runner is at its limit of {limit:g} live encodes"
+                    f" ({float(live):.2f} in use, this job needs {float(need):.2f})"
+                ],
+            )
         entry = Entry(
             job, namespace, relay.id, body.owner, time.time(), check, owner_name=body.owner_name
         )
@@ -341,8 +357,11 @@ class Registry:
         metric("mtt_jobs", "gauge", "Active jobs by state.",
                [({"state": s}, states.get(s, 0)) for s in ACTIVE])  # fmt: skip
         metric("mtt_jobs_limit", "gauge", "Global job cap.", [({}, policy.max_jobs)])
-        live = sum(e.check.source == "mpegts" for e in active)
-        metric("mtt_live_encodes", "gauge", "Active jobs encoding live.", [({}, live)])
+        live = sum(_live_encodes(e.check, e.job.spec) for e in active)
+        metric(
+            "mtt_live_encodes", "gauge", "Live encode load in 1080p30 encodes.",
+            [({}, round(float(live), 3))],
+        )  # fmt: skip
         metric(
             "mtt_live_encodes_limit", "gauge", "Live encode cap.", [({}, policy.max_live_encodes)]
         )
@@ -389,6 +408,15 @@ class Registry:
         finished = [e for e in self.jobs.values() if not e.active]
         for e in sorted(finished, key=lambda e: e.created)[:-FINISHED_KEEP]:
             del self.jobs[e.id]
+
+
+def _live_encodes(check: CheckResult, spec: TrackSpec) -> Fraction:
+    """A live job's load in 1080p30 encodes: its video tracks' pixel rate, at least
+    LIVE_FLOOR."""
+    if check.source != "mpegts":
+        return Fraction(0)
+    pixels = sum(t.width * t.height for t in spec.video_set())
+    return max(LIVE_FLOOR, pixels * spec.fps / LIVE_UNIT if pixels else Fraction(0))
 
 
 def _send_rates(prev: dict | None, cur: dict) -> dict[str, float]:
