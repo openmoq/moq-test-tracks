@@ -66,6 +66,8 @@ from the values the draft gives them.
    namespace; the track names are `catalog`, `video` and `audio`. On
    moqx-main, subscribe with draft 18 (see [docs/api.md](docs/api.md#subscribing)).
 
+No token? [Run tracks locally](docs/local.md): `mtt run` publishes any track from your own machine to any relay.
+
 The service names its namespaces `openmoq/<tool>/mtt_00/…`. For a clip,
 field 1 (`content=<clip id>`) is the clip id instead of `clock`, `bars` or
 `noise`, as in

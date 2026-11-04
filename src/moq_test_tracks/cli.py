@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import dataclasses
 import json
 import os
 import re
@@ -19,7 +20,7 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
-from .config import MODES, job_errors
+from .config import MODES, Relay, Tool, job_errors
 from .config import load as load_config
 from .content import media
 from .runner.request import build as build_request
@@ -204,6 +205,16 @@ async def _run_job(job: Job, dry_run: bool, verbose: bool) -> int:
     return rc
 
 
+def _url_relay(url: str, tool: Tool) -> Relay | None:
+    """A relay given by URL: moqt:// is raw QUIC, https:// WebTransport."""
+    transport = {"moqt": "moqt", "https": "webtransport"}.get(url.partition("://")[0])
+    if transport is None:
+        return None
+    drafts = tuple(tool.capabilities.get("draft", ()))
+    default = 18 if 18 in drafts else max(drafts, default=18)
+    return Relay(id=url, name=url, endpoints={transport: url}, drafts=drafts, default_draft=default)
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     try:
         cfg = load_config(Path(args.root) if args.root else None)
@@ -212,9 +223,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     tool = cfg.tools.get(args.tool)
     if tool is None:
         return _fail([f"unknown or disabled tool {args.tool}"])
-    relay = cfg.relays.get(args.relay or cfg.default_relay)
-    if relay is None:
-        return _fail([f"relay {args.relay} is not in the allowlist"])
+    if args.relay and "://" in args.relay:
+        relay = _url_relay(args.relay, tool)
+        if relay is None:
+            return _fail([f"relay URL {args.relay} must start moqt:// or https://"])
+    else:
+        relay = cfg.relays.get(args.relay or cfg.default_relay)
+        if relay is None:
+            return _fail([f"relay {args.relay} is not in the allowlist"])
+    transport = args.transport or ("moqt" if "moqt" in relay.endpoints else "webtransport")
     prefix = from_slash(args.prefix) if args.prefix else cfg.prefix(tool.id)
     if not args.ns and args.content == "clip":
         return _fail(["--content takes the clip id: --content <clip id>"])
@@ -246,15 +263,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         clip = {"id": cid, "path": str(mezz.path), "attribution": c.attribution, "loop_s": c.loop_s}
     draft = args.draft or relay.default_draft
     ttl = args.ttl or cfg.policy.default_ttl_s
+    # A local run is not bound by the service's per-token TTL.
+    policy = dataclasses.replace(cfg.policy, max_ttl_s=cfg.policy.global_max_ttl_s)
     errors = job_errors(
-        tool, relay, decoded.spec, mode=args.mode, transport=args.transport, draft=draft,
-        ttl_s=ttl, policy=cfg.policy,
+        tool, relay, decoded.spec, mode=args.mode, transport=transport, draft=draft,
+        ttl_s=ttl, policy=policy,
     )  # fmt: skip
     if errors:
         return _fail(errors)
     req = build_request(
         f"j_{secrets.token_hex(4)}", tuple(namespace), decoded.spec, relay,
-        transport=args.transport, draft=draft, mode=args.mode, ttl_s=ttl, clip=clip,
+        transport=transport, draft=draft, mode=args.mode, ttl_s=ttl, clip=clip,
     )  # fmt: skip
     print(f"namespace: {to_slash(namespace)}")
     work = Path(args.work) if args.work else cfg.root / "var" / "jobs"
@@ -480,8 +499,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser("run", help="run one job in the foreground", allow_abbrev=False)
     run.add_argument("--tool", default="aiomoqt")
-    run.add_argument("--relay", help="relay id from config/relays.yaml (default: its default)")
-    run.add_argument("--transport", choices=("moqt", "webtransport"), default="moqt")
+    run.add_argument(
+        "--relay",
+        help="relay id from config/relays.yaml (default: its default), or a moqt:// or https:// URL",
+    )
+    run.add_argument(
+        "--transport", choices=("moqt", "webtransport"), help="default: moqt, or the URL's"
+    )
     run.add_argument("--draft", type=int, help="MoQT draft (default: the relay's default)")
     run.add_argument("--mode", choices=MODES, default="publish")
     run.add_argument("--ttl", type=int, help="seconds (default: policy default_ttl_s)")
