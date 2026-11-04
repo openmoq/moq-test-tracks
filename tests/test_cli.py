@@ -2,11 +2,13 @@
 # This source code is licensed under the Apache 2.0 license found in the
 # LICENSE file in the root directory of this source tree.
 
+import dataclasses
 from pathlib import Path
 
 import pytest
 
-from moq_test_tracks.cli import main
+from moq_test_tracks import config
+from moq_test_tracks.cli import _url_relay, main
 
 ROOT = Path(__file__).resolve().parents[1]
 NS = "alice/demo/mtt_00/clock/loc/h264/720/30/aac/2"
@@ -28,6 +30,14 @@ def test_run_relay_url_draft(capsys):
     assert "--draft 22" in capsys.readouterr().out
     assert run("--relay", "moqt://127.0.0.1:4443", "--draft", "17") == 2
     assert "does not speak draft 17" in capsys.readouterr().err
+
+
+def test_url_relay_tool_without_drafts():
+    tool = config.load(ROOT).tools["aiomoqt"]
+    caps = {k: v for k, v in tool.capabilities.items() if k != "draft"}
+    any_draft = dataclasses.replace(tool, capabilities=caps)
+    assert _url_relay("moqt://h:1", any_draft, None).drafts == (18,)
+    assert _url_relay("moqt://h:1", any_draft, 17).default_draft == 17
 
 
 def test_run_relay_url_scheme(capsys):

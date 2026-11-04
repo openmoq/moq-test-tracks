@@ -205,13 +205,14 @@ async def _run_job(job: Job, dry_run: bool, verbose: bool) -> int:
     return rc
 
 
-def _url_relay(url: str, tool: Tool) -> Relay | None:
-    """A relay given by URL: moqt:// is raw QUIC, https:// WebTransport."""
+def _url_relay(url: str, tool: Tool, draft: int | None) -> Relay | None:
+    """A relay given by URL: moqt:// is raw QUIC, https:// WebTransport. It speaks
+    the tool's drafts, or the one asked for when the tool takes any."""
     transport = {"moqt": "moqt", "https": "webtransport"}.get(url.partition("://")[0])
     if transport is None:
         return None
-    drafts = tuple(tool.capabilities.get("draft", ()))
-    default = 18 if 18 in drafts else max(drafts, default=18)
+    drafts = tuple(tool.capabilities.get("draft") or (draft or 18,))
+    default = 18 if 18 in drafts else max(drafts)
     return Relay(id=url, name=url, endpoints={transport: url}, drafts=drafts, default_draft=default)
 
 
@@ -224,7 +225,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     if tool is None:
         return _fail([f"unknown or disabled tool {args.tool}"])
     if args.relay and "://" in args.relay:
-        relay = _url_relay(args.relay, tool)
+        relay = _url_relay(args.relay, tool, args.draft)
         if relay is None:
             return _fail([f"relay URL {args.relay} must start moqt:// or https://"])
     else:
