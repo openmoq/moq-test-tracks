@@ -3,7 +3,7 @@ contract_version: 2
 id: aiomoqt
 name: aiomoqt pub_media
 repository: https://github.com/gmarzot/aiomoqt
-version: 0.15.0.dev1064+g22fb071
+version: 0.15.0rc1
 protocols: [mtt_00]
 sources: [mpegts, mp4]
 stop:

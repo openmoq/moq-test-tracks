@@ -19,12 +19,10 @@ publishing it.
 git clone https://github.com/openmoq/moq-test-tracks
 cd moq-test-tracks
 python3 -m venv .venv && . .venv/bin/activate
-pip install -e . aiomoqt==0.14.0
+pip install -e . "aiomoqt==0.15.0rc1"
 ```
 
-Run `mtt` inside the clone; it reads `config/` and `adapters/` there. Ladders
-and views (field 13 `altN` and `viewN`) need the aiomoqt the service pins in
-[docker/Dockerfile](../docker/Dockerfile) instead.
+Run `mtt` inside the clone; it reads `config/` and `adapters/` there.
 
 ## Publish a track
 
