@@ -33,6 +33,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 
 ## Changed
 
+- Video encodes use a rate-control buffer (`-bufsize`) of 5 frames at the target bitrate instead of 1 s, so a key frame stays within about 5 mean frames. Cached loops are encoded again on their next use.
 - `docs/local.md` installs aiomoqt 0.15.0's development build 22fb071, which sends LOC payloads as the bare frame that current players read, and publishes ladders and views.
 - Limits for ladders and views. `global.max_live_encodes` is 4, counted in 1080p30 encodes: a live job counts its video tracks' pixel rate (720p30 is 0.44, 1080p60 is 2), at least 0.25, so the worst case equals the former cap of two 1080p60 jobs. A job that alone exceeds the cap is refused with 422. `per_key_defaults.max_video_kbps` is 16000, across a job's video tracks; one track still tops out at 6750 kbps under the height and frame-rate limits. The `mtt_live_encodes` metric reports that load.
 - aiomoqt 0.15.0's development build 7dee6b1, pinned by commit until 0.15.0 is on PyPI, for publishing several video tracks. The image's build stage installs git again.
