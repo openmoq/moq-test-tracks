@@ -16,6 +16,8 @@ from ..spec.fields import AUDIO_FRAME_SAMPLES, AUDIO_SAMPLE_RATE, TrackSpec, Vid
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 LOOP_TARGET_S = 60
 LOOP_MAX_S = 300
+# Rate-control buffer in frames: caps a key frame near this many mean frames.
+VBV_FRAMES = 5
 
 FORMATS = ("mpegts", "mp4")
 
@@ -122,7 +124,8 @@ def _video_encoder(
 def _video_codec_opts(spec: TrackSpec, fmt: str, video_kbps: int) -> list[str]:
     gop = int(spec.frames_per_group)
     kbps = f"{video_kbps}k"
-    rate = ["-b:v", kbps, "-maxrate", kbps, "-bufsize", kbps]
+    vbv = f"{math.ceil(video_kbps * VBV_FRAMES / spec.fps)}k"
+    rate = ["-b:v", kbps, "-maxrate", kbps, "-bufsize", vbv]
     common = ["-r", _rate(spec.fps), "-pix_fmt", "yuv420p", "-g", str(gop), "-keyint_min", str(gop)]
     if spec.video_codec in ("h264", "h264cb"):
         profile = "high" if spec.video_codec == "h264" else "baseline"

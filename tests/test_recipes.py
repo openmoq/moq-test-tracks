@@ -46,6 +46,21 @@ def test_fractional_rate_and_group():
     assert _value(argv, "-g") == "60"
 
 
+@pytest.mark.parametrize(
+    ("height", "frame_rate", "group_ms", "kbps", "bufsize"),
+    [
+        (720, "30", 2000, 2500, "417k"),
+        (720, "29_97", 2002, 2500, "418k"),
+        (1080, "60", 2000, 6750, "563k"),
+    ],
+)
+def test_vbv_is_five_frames(height, frame_rate, group_ms, kbps, bufsize):
+    spec = _spec(video_height=height, frame_rate=frame_rate, group_ms=group_ms)
+    argv = source_command(spec, "mpegts", "o.ts")
+    assert _value(argv, "-b:v") == _value(argv, "-maxrate") == f"{kbps}k"
+    assert _value(argv, "-bufsize") == bufsize
+
+
 def test_codecs():
     h264cb = source_command(_spec(video_codec="h264cb"), "mpegts", "o.ts")
     assert _value(h264cb, "-c:v") == "libx264" and _value(h264cb, "-profile:v") == "baseline"
