@@ -97,6 +97,7 @@ draft's value.
 | No catalog, decoder config in the media | `cat=none` |
 | Big Buck Bunny at 1080p30, CMAF | `content=bbb_4k30&h=1080&pkg=cmaf` |
 | Ten minutes, then end | `dur=600` |
+| A 20 Mb/s MPEG-2 contribution TS (MSFTS) | `pkg=msfts&vc=mpeg2&ac=mp2&h=1080&fps=25&tool=moq2ts&mode=namespace` |
 
 Preview the namespace without starting anything (no token needed):
 
@@ -121,7 +122,9 @@ curl -s -X POST -H "$H" -H "Content-Type: application/json" "$U/api/v1/jobs" -d 
 
 The fields after `openmoq/<tool>/mtt_00` are content, packaging, video
 codec, height, frame rate, audio codec and channels, then the optional
-catalog, init data, group ms, audio delivery, duration and video tracks. A
+catalog, init data, group ms, audio delivery, duration and video tracks,
+and for MSFTS tracks the TS rate and TS packets per Object
+([API reference](api.md#describing-a-job)). A
 clip's id takes the content field, and `content=<clip id>` selects it:
 `openmoq/aiomoqt/mtt_00/bbb_4k30/cmaf/h264/1080/30/aac/2`.
 
