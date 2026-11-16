@@ -41,7 +41,7 @@ Limits live in [config/policy.yaml](../config/policy.yaml).
 | Tier | Limits |
 |------|--------|
 | `standard` | `per_key_defaults`: height up to 1080, up to 60 fps, video up to 16000 kbps across a job's video tracks, TTL up to 1 h (30 min default), 16 jobs per token |
-| `unrestricted` | past those, up to the `global` caps: 16 jobs in total, 4 live encodes in 1080p30 encodes (a live job counts its video tracks' pixel rate, at least 0.25), TTL up to 24 h |
+| `unrestricted` | past those, up to the `global` caps: 32 jobs in total, 4 live encodes in 1080p30 encodes (a live job counts its video tracks' pixel rate, at least 0.25), TTL up to 24 h |
 
 Admin tokens get the `unrestricted` limits whatever their tier. The global
 caps bind everyone.
