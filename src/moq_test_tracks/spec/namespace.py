@@ -27,7 +27,7 @@ _VERSIONS = {v.encode(): v for v in _FIELD_COUNTS}
 _SUPERSEDED = b"moq_test_tracks_00"
 _LAYOUT = (
     f"<prefix>/{fields.VERSION}/content/packaging/vcodec/height/fps/acodec/channels"
-    "[/catalog/init/group_ms/audio_delivery/duration/video_tracks]"
+    "[/catalog/init/group_ms/audio_delivery/duration/video_tracks/mux_kbps/ts_packets]"
 )
 _SAFE = frozenset(b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 _HEX = frozenset("0123456789abcdef")

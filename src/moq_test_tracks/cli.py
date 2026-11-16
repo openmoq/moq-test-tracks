@@ -26,7 +26,7 @@ from .content import media
 from .runner.request import build as build_request
 from .runner.supervisor import EXIT_REFUSED, Job, JobError
 from .spec import fields, moq_test
-from .spec.fields import FIELDS, NA, FieldError, NamespaceError, TrackSpec, applies
+from .spec.fields import FIELDS, NA, TS, FieldError, NamespaceError, TrackSpec, applies
 from .spec.namespace import decode, encode, from_slash, from_text, render, to_slash
 
 # Option names match the API's query parameters (docs/design.md).
@@ -44,6 +44,8 @@ MEDIA_OPTIONS = {
     "adel": "audio_delivery",
     "dur": "duration_s",
     "vt": "video_tracks",
+    "mux": "mux_kbps",
+    "pkts": "ts_packets",
 }
 
 
@@ -59,6 +61,7 @@ def _media_tokens(args: argparse.Namespace) -> list[str]:
         "catalog": given["catalog"] != "none",
         "video": given["video_codec"] != "none",
         "audio": given["audio_codec"] != "none",
+        "ts": given["packaging"] == TS,
     }
     opt_of = {name: opt for opt, name in MEDIA_OPTIONS.items()}
     errors, tokens = [], []
