@@ -4,3 +4,6 @@ tools:
   aiomoqt:
     runner: runner  # compose service that hosts the tool
     max_jobs: 32
+  moq2ts:
+    runner: runner
+    max_jobs: 4  # msfts.max_total_kbps also bounds it

@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+# Copyright (c) OpenMOQ contributors.
+# This source code is licensed under the Apache 2.0 license found in the
+# LICENSE file in the root directory of this source tree.
+
+# moq2ts-cli adapter (docs/tool-contract.md). Check mode prints the plan or the
+# refusal; run mode feeds the source FIFO to moq2ts-cli's stdin and turns its
+# output into @mtt events. Standard library only: it runs in the tool's
+# environment.
+
+import contextlib
+import fcntl
+import json
+import os
+import re
+import select
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+EXIT_REFUSED = 64
+EXIT_UNAVAILABLE = 69
+EXIT_INTERNAL = 70
+TOOL = "moq2ts-cli"
+TS_PACKET = 188
+TS_TRACK = "program-1"
+STATS_S = 2
+CHUNK = TS_PACKET * 348
+PIPE_BYTES = 1 << 20  # the unprivileged maximum: 200 ms at 40 Mb/s
+_COUNTERS = re.compile(r"(\w+)=(\d+)")
+
+
+def plan(req, tool=TOOL):
+    """Accept with the moq2ts-cli argv and source format, or refuse with reasons."""
+    f = req["fields"]
+    reasons = []
+
+    def refuse(field, message):
+        reasons.append({"field": field, "message": message})
+
+    if f["packaging"] != "msfts":
+        refuse("packaging", "moq2ts-cli publishes msfts only")
+    if len(req["endpoints"]) != 1:
+        refuse("endpoints", "moq2ts-cli publishes to one relay")
+    if req["tls"].get("ca_file"):
+        refuse("tls", "moq2ts-cli has no CA file option")
+    if reasons:
+        return {"accept": False, "reasons": reasons}
+    endpoint = req["endpoints"][0]
+    argv = [tool, "--endpoint", endpoint["url"], "--namespace", "/".join(req["namespace"])]
+    argv += ["--draft", str(endpoint["draft"]), "--transparent"]
+    argv += ["--segment-bytes", str(TS_PACKET * f["ts_packets"]), "--video", "/dev/stdin"]
+    if not req["tls"].get("verify", True):
+        argv.append("--insecure")
+    notes = ["moq2ts-cli sends Objects only once the relay forwards a SUBSCRIBE"]
+    return {"accept": True, "source": "mpegts", "argv": argv, "notes": notes}
+
+
+def stats_counters(line):
+    """The counters of a [stats] line (objects, bytes, groups), or None for other output."""
+    if not line.startswith("[stats]"):
+        return None
+    return {k: int(v) for k, v in _COUNTERS.findall(line)}
+
+
+class Feed:
+    """Copies the source FIFO to the tool's stdin in whole TS packets; reports ready on the
+    first bytes and stats every STATS_S. While the tool reads nothing (before a first
+    subscriber), whole chunks are dropped so the source stays on the wall clock."""
+
+    def __init__(self, req, child, emit):
+        self.req, self.child, self.emit = req, child, emit
+        self.input_bytes = 0
+        self.dropped = 0  # TS packets
+        self.eof = False
+        self.tool = {}  # the tool's last [stats] counters
+        self.done = threading.Event()
+
+    def pump(self):
+        src = None
+        try:
+            src = os.open(self.req["source"]["path"], os.O_RDONLY)
+            out = self.child.stdin.fileno()
+            with contextlib.suppress(OSError):  # slack for a tool that reads in bursts
+                fcntl.fcntl(out, fcntl.F_SETPIPE_SZ, PIPE_BYTES)
+            os.set_blocking(out, False)
+            carry = b""
+            while data := os.read(src, CHUNK):
+                data = carry + data
+                cut = len(data) - len(data) % TS_PACKET
+                if cut:
+                    self._forward(out, memoryview(data)[:cut])
+                carry = data[cut:]
+            self.eof = True
+        except OSError:  # the tool closed its stdin
+            pass
+        finally:
+            self.done.set()
+            for close in (self.child.stdin.close, lambda: src is not None and os.close(src)):
+                with contextlib.suppress(OSError):
+                    close()
+
+    def _forward(self, out, chunk):
+        try:
+            rest = chunk[os.write(out, chunk) :]
+        except BlockingIOError:
+            self.dropped += len(chunk) // TS_PACKET
+            return
+        while rest:  # finish a chunk once started, to keep packet alignment
+            select.select([], [out], [])
+            try:
+                rest = rest[os.write(out, rest) :]
+            except BlockingIOError:
+                continue
+        if not self.input_bytes:
+            endpoint = self.req["endpoints"][0]
+            up = {"url": endpoint["url"], "draft": endpoint["draft"], "state": "up"}
+            self.emit({"event": "ready", "endpoints": [up]})
+        self.input_bytes += len(chunk)
+
+    def report(self):
+        """Stats every STATS_S, and once more when the feed ends."""
+        t0, last, ended = time.monotonic(), (0.0, 0, 0), False
+        while not ended:
+            ended = self.done.wait(STATS_S)
+            t = time.monotonic() - t0
+            dt = max(t - last[0], 1e-3)
+            sent = self.tool.get("bytes", 0)
+            track = {k: self.tool[k] for k in ("objects", "groups") if k in self.tool}
+            track["kbps"] = round((sent - last[1]) * 8 / dt / 1000)
+            stats = {"event": "stats", "t": round(t, 3), "tracks": {TS_TRACK: track}}
+            stats["input_kbps"] = round((self.input_bytes - last[2]) * 8 / dt / 1000)
+            stats["input_dropped"] = self.dropped
+            self.emit(stats)
+            last = (t, sent, self.input_bytes)
+
+
+def run(req):
+    p = plan(req)
+    if not p["accept"]:
+        print(json.dumps(p), file=sys.stderr)
+        return EXIT_REFUSED
+    lock = threading.Lock()
+
+    def emit(event):
+        with lock:
+            print("@mtt " + json.dumps(event), flush=True)
+
+    child = subprocess.Popen(  # noqa: S603 - argv list from plan(), no shell
+        p["argv"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1
+    )
+    # The stop signal reaches the whole process group; moq2ts-cli stops on it
+    # itself, so the adapter only waits. SIGTERM is turned into SIGINT.
+    stopping = []
+    signal.signal(signal.SIGINT, lambda *_: stopping.append(1))
+    signal.signal(signal.SIGTERM, lambda *_: (stopping.append(1), child.send_signal(signal.SIGINT)))
+    feed = Feed(req, child, emit)
+    threads = [threading.Thread(target=f, daemon=True) for f in (feed.pump, feed.report)]
+    for t in threads:
+        t.start()
+    for line in child.stdout:
+        tool_stats = stats_counters(line)
+        if tool_stats is None:
+            sys.stderr.write(line)  # [final] and the rest go to the job log
+        else:
+            feed.tool = tool_stats
+    rc = child.wait()
+    feed.done.set()
+    for t in threads:
+        t.join(1)
+    if stopping and rc in (0, 1, -signal.SIGINT):
+        emit({"event": "done", "reason": "signal"})
+        return 0
+    if rc == 0 and feed.eof:
+        emit({"event": "done", "reason": "end of source"})
+        return 0
+    if rc in (0, 1):  # the session ended (a lost relay, or no subscriber in time) or never opened
+        url = req["endpoints"][0]["url"]
+        emit({"event": "endpoint_lost", "url": url, "reason": f"moq2ts-cli exited {rc}"})
+        emit({"event": "done", "reason": f"exit {rc}"})
+        return EXIT_UNAVAILABLE
+    emit({"event": "done", "reason": f"exit {rc}"})
+    return EXIT_INTERNAL
+
+
+def main():
+    with open(os.environ["MTT_REQUEST_FILE"]) as fh:
+        req = json.load(fh)
+    mode = os.environ.get("MTT_MODE")
+    if mode == "check":
+        p = plan(req)
+        print(json.dumps(p))
+        return 0 if p["accept"] else EXIT_REFUSED
+    if mode == "run":
+        return run(req)
+    print("MTT_MODE must be check or run", file=sys.stderr)
+    return EXIT_INTERNAL
+
+
+if __name__ == "__main__":
+    sys.exit(main())
