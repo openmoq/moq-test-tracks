@@ -33,6 +33,8 @@ def fields_dict(spec: TrackSpec) -> dict:
         "audio_frames_per_group": spec.audio_frames_per_group,
         "duration_s": spec.duration_s,
         "video_tracks": spec.video_tracks,
+        "mux_kbps": spec.mux_kbps,
+        "ts_packets": spec.ts_packets,
     }
 
 
