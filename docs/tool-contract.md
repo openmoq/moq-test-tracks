@@ -135,6 +135,8 @@ No secrets are ever passed to a tool.
   `namespace_safe` is its MoQT §8.8 rendering, for log and file names.
 - **`fields`** are the decoded characteristic fields. Fields that don't apply
   are `null`. `frame_rate` stays a string, so that `29_97` is unambiguous.
+  `mux_kbps` and `ts_packets` apply to packaging `msfts` only
+  ([MSFTS tracks](#msfts-tracks)).
 - **`video`** lists the video tracks in Track Name order: size, target
   bitrate and catalog label. A ladder's labels are `720p` and so on, views'
   `view 1` and so on; one video track has label `null`. It is empty without
@@ -249,6 +251,20 @@ These rules hold for every tool. They restate the draft operationally.
 - If one relay is lost, carry on with the rest and report it. Exit 69 only
   when none remain.
 
+### MSFTS tracks
+
+Packaging `msfts` is an MPEG-TS stream carried unmodified
+(draft-gregoire-moq-msfts, `mpeg2tsMode` `unmodified-program`). The rules
+above for video and audio Objects, Timing and init data give way to these:
+
+- One media track holds every TS packet of the source, null packets included;
+  `tracks` lists the catalog, that track and its media timeline track
+  (`catalog`, `program-1`, `program-1.timeline` with moq2ts).
+- An Object is `ts_packets` whole 188-byte packets; a Group starts at a
+  random access point, so it is one closed GOP (`group_ms`).
+- The catalog's root `initDataList` carries the PAT and the PMT.
+- `mux_kbps` is the TS rate, `video_kbps` the MPEG-2 video rate within it.
+
 ## Source media
 
 The service renders source media with ffmpeg, using only validated field
@@ -263,7 +279,7 @@ values. Every source format guarantees:
 
 | `format` | Delivery | Notes |
 |----------|----------|-------|
-| `mpegts` | FIFO, live | H.264/H.265 with AUDs, AAC in ADTS, or Opus. Several video tracks are one video stream each, in Track Name order, before the audio. |
+| `mpegts` | FIFO, live | H.264/H.265 with AUDs, AAC in ADTS, or Opus. Several video tracks are one video stream each, in Track Name order, before the audio. With packaging `msfts`: MPEG-2 video and MP2 audio in one program, null-padded to a constant `mux_kbps`, PAT and PMT every 100 ms, PCR every 20 ms, played out at the rate of its PCR (TSDuck `regulate`). |
 | `annexb` | two FIFOs, live: `video_path` (Annex B) and `audio_path` (ADTS AAC or Ogg Opus) | For tools that take elementary streams. A path is `null` when the namespace has no video or no audio. |
 | `fmp4` | FIFO, live | An init segment, then one moof+mdat per frame (CMAF chunks) |
 | `flv` | FIFO, live | H.264 + AAC only |

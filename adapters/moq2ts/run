@@ -176,7 +176,7 @@ def run(req):
     if rc == 0 and feed.eof:
         emit({"event": "done", "reason": "end of source"})
         return 0
-    if rc in (0, 1):  # the session ended (a lost relay, or no subscriber in time) or never opened
+    if rc in (0, 1):  # the session ended (lost relay, no subscriber in time) or never opened
         url = req["endpoints"][0]["url"]
         emit({"event": "endpoint_lost", "url": url, "reason": f"moq2ts-cli exited {rc}"})
         emit({"event": "done", "reason": f"exit {rc}"})

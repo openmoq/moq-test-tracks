@@ -18,7 +18,7 @@ LOOP_TARGET_S = 60
 LOOP_MAX_S = 300
 
 FORMATS = ("mpegts", "mp4")
-# msfts video rate-control buffer, in seconds of video (the reference setup's 6000k at 17000k).
+# msfts video rate-control buffer, in seconds of video: 6000k at 17000k.
 TS_VBV_S = Fraction(6, 17)
 # TSDuck checks GitHub for new versions unless this is set.
 PACER_ENV = {"TSDUCK_NO_VERSION_CHECK": "1"}

@@ -269,8 +269,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     ttl = args.ttl or cfg.policy.default_ttl_s
     if decoded.spec.is_ts and not args.ttl:
         ttl = min(ttl, cfg.policy.msfts_max_ttl_s)
-    # A local run is not bound by the service's per-token TTL, and has no token: msfts,
-    # which needs an unrestricted one, runs with the unrestricted limits.
+    # A local run has no token: no per-token TTL, and msfts gets the unrestricted limits.
     policy = dataclasses.replace(cfg.policy, max_ttl_s=cfg.policy.global_max_ttl_s)
     errors = job_errors(
         tool, relay, decoded.spec, mode=args.mode, transport=transport, draft=draft,
