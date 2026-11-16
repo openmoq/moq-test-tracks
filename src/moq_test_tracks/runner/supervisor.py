@@ -114,7 +114,8 @@ class Job:
         self._kill_requested = False
         self._up: set[str] = set()  # endpoint URLs the tool reports up
         self._adapter: asyncio.subprocess.Process | None = None
-        self._source: asyncio.subprocess.Process | None = None
+        self._source: asyncio.subprocess.Process | None = None  # the stage the tool reads
+        self._feeders: list[asyncio.subprocess.Process] = []  # stages before it
         self._stopping = False
         self.dir.mkdir(parents=True, exist_ok=True)
 
@@ -185,24 +186,20 @@ class Job:
             self.request["source"] = None
             return
         if fmt == "mpegts":
-            fifo = self.dir / "source.ts"
-            with contextlib.suppress(FileNotFoundError):
-                fifo.unlink()
-            os.mkfifo(fifo)
+            fifo = self._fifo("source.ts")
             start = start_us(self.spec.group_ms) if self.spec.group_ms else None
-            argv = recipes.source_command(
-                self.spec, "mpegts", fifo, self.request.get("clip"), start_us=start
-            )
-            log = (self.dir / "ffmpeg.log").open("ab")
-            self._source = await asyncio.create_subprocess_exec(
-                *argv,
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=log,
-                start_new_session=True,
-                preexec_fn=self._preexec,
-            )
-            self._record(self._source)
+            clip = self.request.get("clip")
+            if self.spec.is_ts:
+                # ffmpeg into a second FIFO, paced out to the tool by tsp.
+                encoded = self._fifo("encoder.ts")
+                argv = recipes.source_command(self.spec, "mpegts", encoded, clip, start_us=start)
+                self._feeders = [await self._spawn(argv, "ffmpeg.log")]
+                env = {**os.environ, **recipes.PACER_ENV}
+                pacer = recipes.pacer_command(encoded, fifo)
+                self._source = await self._spawn(pacer, "tsp.log", env)
+            else:
+                argv = recipes.source_command(self.spec, "mpegts", fifo, clip, start_us=start)
+                self._source = await self._spawn(argv, "ffmpeg.log")
             self.request["source"] = {
                 "format": fmt, "path": str(fifo), "fifo": True, "loop": False, "start_us": start,
             }  # fmt: skip
@@ -217,6 +214,30 @@ class Job:
             }  # fmt: skip
             return
         raise JobError(f"no source stage for format {fmt}")
+
+    def _fifo(self, name: str) -> Path:
+        path = self.dir / name
+        with contextlib.suppress(FileNotFoundError):
+            path.unlink()
+        os.mkfifo(path)
+        return path
+
+    async def _spawn(
+        self, argv: list[str], log_name: str, env: dict[str, str] | None = None
+    ) -> asyncio.subprocess.Process:
+        """A source-stage process in its own process group, logging to the job directory."""
+        with (self.dir / log_name).open("ab") as log:
+            proc = await asyncio.create_subprocess_exec(
+                *argv,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=log,
+                env=env,
+                start_new_session=True,
+                preexec_fn=self._preexec,
+            )
+        self._record(proc)
+        return proc
 
     async def _cached_mp4(self, track: VideoTrack | None) -> Path:
         clip = self.request.get("clip")
@@ -251,14 +272,16 @@ class Job:
             tmp.unlink(missing_ok=True)
 
     async def _stop_source(self) -> None:
-        if self._source is None or self._source.returncode is not None:
-            return
-        _killpg(self._source.pid, signal.SIGTERM)
-        try:
-            await asyncio.wait_for(self._source.wait(), SOURCE_GRACE_S)
-        except TimeoutError:
-            _killpg(self._source.pid, signal.SIGKILL)
-            await self._source.wait()
+        procs = [p for p in (self._source, *self._feeders) if p and p.returncode is None]
+        self._feeders = []
+        for p in procs:
+            _killpg(p.pid, signal.SIGTERM)
+        for p in procs:
+            try:
+                await asyncio.wait_for(p.wait(), SOURCE_GRACE_S)
+            except TimeoutError:
+                _killpg(p.pid, signal.SIGKILL)
+                await p.wait()
 
     def remaining(self) -> float:
         """Seconds left of the TTL."""

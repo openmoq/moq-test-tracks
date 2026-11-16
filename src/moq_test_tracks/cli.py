@@ -267,11 +267,14 @@ def cmd_run(args: argparse.Namespace) -> int:
         clip = {"id": cid, "path": str(mezz.path), "attribution": c.attribution, "loop_s": c.loop_s}
     draft = args.draft or relay.default_draft
     ttl = args.ttl or cfg.policy.default_ttl_s
-    # A local run is not bound by the service's per-token TTL.
+    if decoded.spec.is_ts and not args.ttl:
+        ttl = min(ttl, cfg.policy.msfts_max_ttl_s)
+    # A local run is not bound by the service's per-token TTL, and has no token: msfts,
+    # which needs an unrestricted one, runs with the unrestricted limits.
     policy = dataclasses.replace(cfg.policy, max_ttl_s=cfg.policy.global_max_ttl_s)
     errors = job_errors(
         tool, relay, decoded.spec, mode=args.mode, transport=transport, draft=draft,
-        ttl_s=ttl, policy=policy,
+        ttl_s=ttl, policy=policy, unrestricted=decoded.spec.is_ts,
     )  # fmt: skip
     if errors:
         return _fail(errors)
