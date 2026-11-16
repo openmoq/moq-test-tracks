@@ -177,6 +177,8 @@ class Registry:
         clip = self._clip(decoded.spec)
         draft = body.draft or relay.default_draft
         ttl = body.ttl_s or cfg.policy.default_ttl_s
+        if decoded.spec.is_ts and not body.ttl_s:
+            ttl = min(ttl, cfg.policy.msfts_max_ttl_s)
         errors = job_errors(
             tool, relay, decoded.spec, mode=body.mode, transport=body.transport, draft=draft,
             ttl_s=ttl, policy=cfg.policy, unrestricted=body.unrestricted,
@@ -276,6 +278,17 @@ class Registry:
                     f" ({float(live):.2f} in use, this job needs {float(need):.2f})"
                 ],
             )
+        if spec.is_ts:
+            used = sum(e.job.spec.mux_kbps or 0 for e in active if e.job.spec.is_ts)
+            cap = cfg.policy.msfts_max_total_kbps
+            if used + (spec.mux_kbps or 0) > cap:
+                raise Rejected(
+                    429,
+                    [
+                        f"msfts jobs are at their limit of {cap} kbps"
+                        f" ({used} in use, this job needs {spec.mux_kbps})"
+                    ],
+                )
         entry = Entry(
             job, namespace, relay.id, body.owner, time.time(), check, owner_name=body.owner_name
         )

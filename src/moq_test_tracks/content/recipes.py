@@ -18,6 +18,10 @@ LOOP_TARGET_S = 60
 LOOP_MAX_S = 300
 
 FORMATS = ("mpegts", "mp4")
+# msfts video rate-control buffer, in seconds of video (the reference setup's 6000k at 17000k).
+TS_VBV_S = Fraction(6, 17)
+# TSDuck checks GitHub for new versions unless this is set.
+PACER_ENV = {"TSDUCK_NO_VERSION_CHECK": "1"}
 
 
 class RecipeError(ValueError):
@@ -138,6 +142,12 @@ def _video_codec_opts(spec: TrackSpec, fmt: str, video_kbps: int) -> list[str]:
             "-c:v", "libx265", "-preset", "veryfast", "-tune", "zerolatency",
             "-x265-params", params, *tag, *common, *rate,
         ]  # fmt: skip
+    if spec.video_codec == "mpeg2":
+        vbv = f"{math.ceil(video_kbps * TS_VBV_S)}k"
+        return [
+            "-c:v", "mpeg2video", "-bf", "0", "-flags", "+cgop", "-sc_threshold", "1000000000",
+            *common, "-b:v", kbps, "-maxrate", kbps, "-minrate", kbps, "-bufsize", vbv,
+        ]  # fmt: skip
     if spec.video_codec == "av1":
         return [
             "-c:v", "libsvtav1", "-preset", "10",
@@ -150,6 +160,8 @@ def _audio_encoder(spec: TrackSpec) -> list[str]:
     common = ["-ar", str(AUDIO_SAMPLE_RATE), "-ac", str(spec.audio_channels)]
     if spec.audio_codec == "aac":
         return ["-c:a", "aac", "-b:a", f"{spec.audio_kbps}k", *common]
+    if spec.audio_codec == "mp2":
+        return ["-c:a", "mp2", "-b:a", f"{spec.audio_kbps}k", *common]
     if spec.audio_codec == "opus":
         return [
             "-c:a", "libopus", "-b:a", f"{spec.audio_kbps}k", "-vbr", "off", "-frame_duration", "20",
@@ -186,6 +198,14 @@ def loop_seconds(spec: TrackSpec, target: int | None = None) -> Fraction:
     return unit * max(1, math.floor(target / unit))
 
 
+def pacer_command(source: str | Path, output: str | Path) -> list[str]:
+    """tsp argv that plays an msfts stream out to output at the rate of its PCR."""
+    return [
+        "tsp", "--buffer-size-mb", "1", "-I", "file", str(source),
+        "-P", "regulate", "--pcr-synchronous", "-O", "file", str(output),
+    ]  # fmt: skip
+
+
 def source_command(
     spec: TrackSpec,
     fmt: str,
@@ -205,6 +225,10 @@ def source_command(
         raise RecipeError(f"unknown source format {fmt}")
     argv = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "warning", "-y"]
     live = fmt == "mpegts"
+    if spec.is_ts and not live:
+        raise RecipeError("msfts is live only")
+    # msfts is paced downstream by its PCR (pacer_command).
+    realtime = ["-re"] if live and not spec.is_ts else []
     tracks = spec.video_set()
     if len(tracks) > 1 and not live and track is None:
         raise RecipeError("each video track of a set has its own mp4")
@@ -219,7 +243,7 @@ def source_command(
             raise RecipeError("clip content needs a fetched clip")
         if len(video) > 1:
             raise RecipeError("a clip's video tracks are mp4 loops, one per track")
-        inputs += (["-re"] if live else []) + ["-stream_loop", "-1", "-i", str(clip["path"])]
+        inputs += realtime + ["-stream_loop", "-1", "-i", str(clip["path"])]
         if spec.has_video:
             maps += ["-map", "0:v:0"]
             encoders += _clip_video_filter(spec, clip["attribution"], track)
@@ -230,14 +254,20 @@ def source_command(
     else:
         for stream, t in video:
             set_track = t if len(tracks) > 1 else None
-            inputs += (["-re"] if live else []) + _video_input(spec, start_us, set_track)
+            inputs += realtime + _video_input(spec, start_us, set_track)
             encoders += _video_encoder(spec, fmt, t, stream)
         if with_audio:
-            inputs += (["-re"] if live else []) + _audio_input(spec, start_us)
+            inputs += realtime + _audio_input(spec, start_us)
             encoders += _audio_encoder(spec)
         for i in range(len(video) + int(with_audio)):
             maps += ["-map", str(i)]
     argv += inputs + maps + encoders
+    if live and spec.is_ts:
+        argv += [
+            "-f", "mpegts", "-muxrate", str(spec.mux_kbps * 1000), "-mpegts_service_id", "1",
+            "-pat_period", "0.1", "-pcr_period", "20", str(output),
+        ]  # fmt: skip
+        return argv
     if live:
         argv += ["-f", "mpegts", "-muxdelay", "0", "-muxpreload", "0", str(output)]
         return argv
