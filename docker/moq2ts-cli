@@ -1,0 +1,5 @@
+#!/bin/sh
+# moq2ts-cli through the loader and libraries of its build platform (docker/Dockerfile).
+export SSL_CERT_FILE="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}"
+exec /opt/moq2ts/sys/ld-linux-x86-64.so.2 --library-path /opt/moq2ts/usr/lib:/opt/moq2ts/sys \
+    /opt/moq2ts/usr/bin/moq2ts-cli "$@"

@@ -36,8 +36,15 @@ from moq_test_tracks.spec.fields import (
     GENERATED,
     HEIGHTS,
     INIT_DATA,
+    MPEG2_RATES,
     NA,
     REQUIRED,
+    TS,
+    TS_AUDIO_CODECS,
+    TS_DEFAULT_MUX_KBPS,
+    TS_MAX_PACKETS,
+    TS_MUX_KBPS,
+    TS_VIDEO_CODECS,
     VERSION,
     VIDEO_CODECS,
     field_values,
@@ -151,6 +158,55 @@ def test_omitted_values():
     audio_only = decode(_ns(DRAFT_EXAMPLES[4])).spec
     assert audio_only.init_data is None and audio_only.group_ms is None
     assert audio_only.video_tracks is None and audio_only.audio_delivery == 10
+
+
+TS_BASE = PREFIX + "clock/msfts/mpeg2/1080/25/mp2/2"
+
+
+def test_msfts_shortest_form_is_the_20_mbps_track():
+    spec = decode(_ns(TS_BASE)).spec
+    assert (spec.mux_kbps, spec.video_kbps, spec.audio_kbps) == (20000, 17000, 192)
+    assert (spec.group_ms, spec.frames_per_group, spec.init_data) == (1000, 25, "catalog")
+    assert (spec.ts_packets, spec.segment_bytes) == (7, 1316)
+    assert spec.audio_delivery is None and spec.video_tracks is None
+    assert spec.tracks == ("catalog", "program-1", "program-1.timeline")
+    assert to_slash(encode(spec, ("example",))) == TS_BASE
+
+
+def test_msfts_trailing_fields():
+    assert decode(_ns(PREFIX + "clock/msfts/mpeg2/720/25/mp2/2")).spec.mux_kbps == 8000
+    text = TS_BASE + "/msf/catalog/1000/_/0/_/40000"
+    spec = decode(_ns(text)).spec
+    assert (spec.mux_kbps, spec.video_kbps, spec.ts_packets) == (40000, 36000, 7)
+    assert to_slash(encode(spec, ("example",))) == text
+    spec = decode(_ns(TS_BASE + "/msf/catalog/1000/_/0/_/20000/348")).spec
+    assert spec.segment_bytes == 65424
+    assert to_slash(encode(spec, ("example",))) == TS_BASE + "/msf/catalog/1000/_/0/_/20000/348"
+
+
+@pytest.mark.parametrize(
+    "text, index",
+    [
+        (PREFIX + "clock/msfts/h264/1080/25/mp2/2", 3),
+        (PREFIX + "clock/loc/mpeg2/1080/25/aac/2", 3),
+        (PREFIX + "clock/loc/h264/1080/25/mp2/2", 6),
+        (PREFIX + "clock/msfts/mpeg2/1080/25/aac/2", 6),
+        (PREFIX + "clock/msfts/mpeg2/360/25/mp2/2", 4),
+        (PREFIX + "clock/msfts/mpeg2/1080/26/mp2/2", 5),
+        (PREFIX + "clock/msfts/mpeg2/1080/25/mp2/2/none", 2),
+        (PREFIX + "clock/msfts/mpeg2/1080/25/mp2/2/msf/track", 9),
+        (PREFIX + "clock/msfts/mpeg2/1080/25/mp2/2/msf/catalog/1000/1", 11),
+        (PREFIX + "clock/msfts/mpeg2/1080/25/mp2/2/msf/catalog/1000/_/0/1", 13),
+        (PREFIX + "clock/msfts/mpeg2/1080/25/mp2/2/msf/catalog/1000/_/0/_/10000", 14),
+        (PREFIX + "clock/msfts/mpeg2/1080/25/mp2/2/msf/catalog/1000/_/0/_/20000/349", 15),
+        (FULL_FORM + "/8000", 14),
+        (FULL_FORM + "/_/7", 15),
+    ],
+)
+def test_msfts_rules(text, index):
+    with pytest.raises(NamespaceError) as e:
+        decode(_ns(text))
+    assert e.value.errors[0].index == index
 
 
 def test_bitrates():
@@ -326,18 +382,46 @@ clip_ids = st.from_regex(r"[a-z0-9_]{1,12}", fullmatch=True).filter(
 )
 
 
+def _ts_spec(draw, content, clip):
+    rate = draw(st.sampled_from(MPEG2_RATES))
+    step = group_ms_step(rate)
+    audio_codec = draw(st.sampled_from(TS_AUDIO_CODECS))
+    return TrackSpec(
+        content=content,
+        clip=clip,
+        catalog="msf",
+        packaging=TS,
+        video_codec=draw(st.sampled_from(TS_VIDEO_CODECS)),
+        video_height=draw(st.sampled_from(tuple(TS_DEFAULT_MUX_KBPS))),
+        frame_rate=rate,
+        audio_codec=audio_codec,
+        audio_channels=None if audio_codec == "none" else draw(st.sampled_from((1, 2))),
+        init_data="catalog",
+        group_ms=draw(st.integers(math.ceil(100 / step), 10000 // step)) * step,
+        audio_delivery=None,
+        duration_s=draw(st.integers(0, 86400)),
+        video_tracks=None,
+        mux_kbps=draw(st.sampled_from(tuple(TS_MUX_KBPS))),
+        ts_packets=draw(st.integers(1, TS_MAX_PACKETS)),
+    )
+
+
 @st.composite
 def specs(draw):
     catalog = draw(st.sampled_from(CATALOGS))
     packaging = draw(st.sampled_from(CATALOG_PACKAGING[catalog]))
+    content = draw(st.sampled_from(CONTENTS))
+    clip = draw(clip_ids) if content == "clip" else None
+    if packaging == TS:
+        return _ts_spec(draw, content, clip)
     if catalog == "none":
         init_data = None
     elif packaging in CATALOG_INIT_PACKAGING:
         init_data = "catalog"
     else:
         init_data = draw(st.sampled_from(INIT_DATA))
-    video_codec = draw(st.sampled_from(VIDEO_CODECS))
-    audio_codec = draw(st.sampled_from(AUDIO_CODECS))
+    video_codec = draw(st.sampled_from([c for c in VIDEO_CODECS if c != "mpeg2"]))
+    audio_codec = draw(st.sampled_from([c for c in AUDIO_CODECS if c != "mp2"]))
     video = dict.fromkeys(("video_height", "frame_rate", "group_ms", "video_tracks"))
     if video_codec != "none":
         rate = draw(st.sampled_from([*FRACTIONAL_RATES, *(str(n) for n in range(1, 121))]))
@@ -355,10 +439,6 @@ def specs(draw):
             video_tracks=draw(st.sampled_from(tracks)),
         )
     audio = dict.fromkeys(("audio_channels", "audio_delivery"))
-    content = draw(st.sampled_from(CONTENTS))
-    clip = None
-    if content == "clip":
-        clip = draw(clip_ids)
     if audio_codec != "none":
         delivery = st.integers(1, 100)
         if packaging in DATAGRAM_PACKAGING:

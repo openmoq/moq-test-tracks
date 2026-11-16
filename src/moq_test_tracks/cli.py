@@ -26,7 +26,7 @@ from .content import media
 from .runner.request import build as build_request
 from .runner.supervisor import EXIT_REFUSED, Job, JobError
 from .spec import fields, moq_test
-from .spec.fields import FIELDS, NA, FieldError, NamespaceError, TrackSpec, applies
+from .spec.fields import FIELDS, NA, TS, FieldError, NamespaceError, TrackSpec, applies
 from .spec.namespace import decode, encode, from_slash, from_text, render, to_slash
 
 # Option names match the API's query parameters (docs/design.md).
@@ -44,6 +44,8 @@ MEDIA_OPTIONS = {
     "adel": "audio_delivery",
     "dur": "duration_s",
     "vt": "video_tracks",
+    "mux": "mux_kbps",
+    "pkts": "ts_packets",
 }
 
 
@@ -59,6 +61,7 @@ def _media_tokens(args: argparse.Namespace) -> list[str]:
         "catalog": given["catalog"] != "none",
         "video": given["video_codec"] != "none",
         "audio": given["audio_codec"] != "none",
+        "ts": given["packaging"] == TS,
     }
     opt_of = {name: opt for opt, name in MEDIA_OPTIONS.items()}
     errors, tokens = [], []
@@ -264,11 +267,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         clip = {"id": cid, "path": str(mezz.path), "attribution": c.attribution, "loop_s": c.loop_s}
     draft = args.draft or relay.default_draft
     ttl = args.ttl or cfg.policy.default_ttl_s
-    # A local run is not bound by the service's per-token TTL.
+    if decoded.spec.is_ts and not args.ttl:
+        ttl = min(ttl, cfg.policy.msfts_max_ttl_s)
+    # A local run has no token: no per-token TTL, and msfts gets the unrestricted limits.
     policy = dataclasses.replace(cfg.policy, max_ttl_s=cfg.policy.global_max_ttl_s)
     errors = job_errors(
         tool, relay, decoded.spec, mode=args.mode, transport=transport, draft=draft,
-        ttl_s=ttl, policy=policy,
+        ttl_s=ttl, policy=policy, unrestricted=decoded.spec.is_ts,
     )  # fmt: skip
     if errors:
         return _fail(errors)

@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from ..spec.fields import FIELDS, NA, VERSION, TrackSpec, applies, omitted_value
+from ..spec.fields import FIELDS, NA, TS, VERSION, TrackSpec, applies, omitted_value
 from ..spec.namespace import decode
 
 # Query parameter -> field name (docs/design.md).
@@ -25,6 +25,8 @@ PARAMS = {
     "adel": "audio_delivery",
     "dur": "duration_s",
     "vt": "video_tracks",
+    "mux": "mux_kbps",
+    "pkts": "ts_packets",
 }
 
 # Parameters the API no longer takes, with what replaced them.
@@ -78,7 +80,12 @@ def resolve(params: dict[str, str], preset: str | None = None) -> TrackSpec:
     if preset is not None and preset not in PRESETS:
         raise PresetError(f"unknown preset {preset}; one of {', '.join(PRESETS)}")
     p = {**DEFAULTS, **(PRESETS.get(preset, {}) if preset else {}), **params}
-    has = {"catalog": p["cat"] != "none", "video": p["vc"] != "none", "audio": p["ac"] != "none"}
+    has = {
+        "catalog": p["cat"] != "none",
+        "video": p["vc"] != "none",
+        "audio": p["ac"] != "none",
+        "ts": p["pkg"] == TS,
+    }
     opt = {name: key for key, name in PARAMS.items()}
     tokens: list[str] = []
     values: dict[str, object] = {}

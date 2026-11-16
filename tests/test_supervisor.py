@@ -227,6 +227,47 @@ def test_live_source_fifo(fake_tool, tmp_path):
     assert any(line.startswith("read ") and line != "read 0" for line in logs)
 
 
+TS_CHANGES = dict(
+    packaging="msfts", video_codec="mpeg2", video_height=720, frame_rate="25", audio_codec="mp2",
+    audio_delivery=None, video_tracks=None, mux_kbps=8000, ts_packets=7,
+)  # fmt: skip
+
+
+def test_msfts_source_is_encoder_then_pacer(fake_tool, tmp_path, monkeypatch):
+    """ffmpeg writes a second FIFO, which tsp plays out to the tool's; each is its own group."""
+    encoder = "import sys; open(sys.argv[1], 'wb').write(b'\\x47' * 188 * 200)"
+    pacer = (
+        "import os, shutil, sys; open(sys.argv[3], 'w').write(os.environ['TSDUCK_NO_VERSION_CHECK']);"
+        " shutil.copyfileobj(open(sys.argv[1], 'rb'), open(sys.argv[2], 'wb'))"
+    )
+    env = tmp_path / "pacer-env"
+    monkeypatch.setattr(
+        recipes,
+        "source_command",
+        lambda spec, fmt, out, clip=None, start_us=None: [sys.executable, "-c", encoder, str(out)],
+    )
+    monkeypatch.setattr(
+        recipes,
+        "pacer_command",
+        lambda src, out: [sys.executable, "-c", pacer, str(src), str(out), str(env)],
+    )
+    job = _job(fake_tool, tmp_path, source="mpegts", **TS_CHANGES)
+    _, _, logs = _collect(job, stop_after=0.2)
+    assert "read 18800" in logs
+    assert env.read_text() == "1"
+    assert job.request["source"]["path"] == str(job.dir / "source.ts")
+    assert len((job.dir / "pgids").read_text().split()) == 3  # encoder, pacer, adapter
+    assert job._source.returncode is not None and not job._feeders
+
+
+@needs_ffmpeg
+@pytest.mark.skipif(shutil.which("tsp") is None, reason="needs TSDuck")
+def test_msfts_live_source(fake_tool, tmp_path):
+    job = _job(fake_tool, tmp_path, source="mpegts", **TS_CHANGES)
+    _, _, logs = _collect(job, stop_after=0.5)
+    assert "read 18800" in logs
+
+
 @pytest.mark.parametrize(
     "group_ms, now_us, start",
     [
