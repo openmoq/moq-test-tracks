@@ -68,6 +68,8 @@ from the values the draft gives them.
 
 No token? [Run tracks locally](docs/local.md): `mtt run` publishes any track from your own machine to any relay.
 
+Your own service? [Deploy it](docs/deploy.md) with Docker Compose.
+
 The service names its namespaces `openmoq/<tool>/mtt_00/…`. For a clip,
 field 1 (`content=<clip id>`) is the clip id instead of `clock`, `bars` or
 `noise`, as in
@@ -78,7 +80,7 @@ examples use the prefix `example`; the fields from `mtt_00` on are the same.
 
 | Path | Contents |
 |------|----------|
-| [docs/](docs/) | [User guide](docs/user-guide.md), [admin guide](docs/admin.md), [API](docs/api.md), [tool contract](docs/tool-contract.md), [design](docs/design.md) |
+| [docs/](docs/) | [User guide](docs/user-guide.md), [admin guide](docs/admin.md), [deploying](docs/deploy.md), [API](docs/api.md), [tool contract](docs/tool-contract.md), [design](docs/design.md) |
 | [adapters/](adapters/) | One directory per tool: manifest, adapter, notes |
 | [config/](config/) | Enabled tools, relay catalog, policy limits |
 | [media/](media/) | Clip sources (`sources.yaml`) |
