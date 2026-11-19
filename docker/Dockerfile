@@ -2,15 +2,11 @@
 # One image for both services: `mtt api` and `mtt runner` (deploy/compose.yaml).
 
 FROM python:3.12-slim-bookworm AS build
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-# aiomoqt pinned by commit until 0.15.0 is on PyPI.
-ARG AIOMOQT="aiomoqt @ git+https://github.com/gmarzot/aiomoqt@7dee6b1b648402dd8930bca286089834382a7b33"
-ARG AIOPQUIC="aiopquic==0.7.0"
+ARG AIOMOQT="aiomoqt==0.15.0rc1"
+ARG AIOPQUIC="aiopquic==0.8.0rc1"
 RUN pip wheel --no-cache-dir --wheel-dir /wheels . "${AIOMOQT}" "${AIOPQUIC}"
 
 FROM python:3.12-slim-bookworm
