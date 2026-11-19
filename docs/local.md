@@ -19,7 +19,7 @@ publishing it.
 git clone https://github.com/openmoq/moq-test-tracks
 cd moq-test-tracks
 python3 -m venv .venv && . .venv/bin/activate
-pip install -e . "aiomoqt @ git+https://github.com/gmarzot/aiomoqt@22fb07187fa8bcf5571d41936782bd3df0261bb3"
+pip install -e . "aiomoqt==0.15.0rc1"
 ```
 
 Run `mtt` inside the clone; it reads `config/` and `adapters/` there.
