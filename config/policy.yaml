@@ -3,7 +3,7 @@
 namespace_prefix: [openmoq]  # tool id is appended
 
 global:
-  max_jobs: 16
+  max_jobs: 32
   # The CPU guard, in 1080p30 encodes: a live job counts its video tracks' pixel
   # rate (720p30 0.44, 1080p60 2), at least 0.25. Cached loops count nothing.
   max_live_encodes: 4

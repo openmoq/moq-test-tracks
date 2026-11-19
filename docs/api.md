@@ -21,7 +21,7 @@ its holder's role, limits tier, the relays it may publish to, and its expiry;
 A `standard` token gets the per-token limits in `config/policy.yaml` (today:
 height up to 1080, up to 60 fps, video up to 16000 kbps across a job's video
 tracks, TTL up to 1 h, 16 jobs). An `unrestricted` or admin token may exceed
-them up to the global caps (16 jobs in total, 4 live encodes, TTL up to 24 h).
+them up to the global caps (32 jobs in total, 4 live encodes, TTL up to 24 h).
 Live encodes are counted in 1080p30 encodes: a live job counts its video
 tracks' pixel rate (720p30 is 0.44, 1080p60 is 2), at least 0.25. Cached loops
 count nothing. A job may only use a relay the token grants.
