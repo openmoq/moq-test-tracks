@@ -44,7 +44,12 @@ time, so changes take a rebuild.
 git clone https://github.com/openmoq/moq-test-tracks
 cd moq-test-tracks/deploy
 cp .env.example .env && chmod 600 .env
-# Set MTT_HOSTNAMES=<your DNS name> and MTT_PUBLIC_ORIGINS=https://<your DNS name> in .env.
+```
+
+Set `MTT_HOSTNAMES=<your DNS name>` and `MTT_PUBLIC_ORIGINS=https://<your DNS name>`
+in `.env`, then:
+
+```sh
 for v in MTT_RUNNER_TOKEN MTT_TOKEN_SECRET MTT_SESSION_SECRET MTT_GRAFANA_ADMIN_PASSWORD; do
     sed -i "s/^$v=.*/$v=$(openssl rand -hex 32)/" .env
 done
