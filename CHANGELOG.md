@@ -35,7 +35,7 @@ How to add an entry: see [CONTRIBUTING.md](/CONTRIBUTING.md#changelog).
 ## Changed
 
 - `global.max_jobs` and the aiomoqt tool's `max_jobs` are 32, so other callers' jobs still fit beside a set of standing streams. The live-encode cap still guards CPU.
-- aiomoqt 0.15.0rc1 on aiopquic 0.8.0rc1, from PyPI, for publishing several video tracks. LOC payloads in the clear are the bare frame, without the `0x0A 0x00` prefix, so LOC tracks need a player that reads the bare frame. `docs/local.md` installs the same aiomoqt.
+- aiomoqt 0.15.0rc2 on aiopquic 0.8.0rc2, from PyPI, for publishing several video tracks. LOC payloads in the clear are the bare frame, without the `0x0A 0x00` prefix, so LOC tracks need a player that reads the bare frame. `docs/local.md` installs the same aiomoqt.
 - Limits for ladders and views. `global.max_live_encodes` is 4, counted in 1080p30 encodes: a live job counts its video tracks' pixel rate (720p30 is 0.44, 1080p60 is 2), at least 0.25, so the worst case equals the former cap of two 1080p60 jobs. A job that alone exceeds the cap is refused with 422. `per_key_defaults.max_video_kbps` is 16000, across a job's video tracks; one track still tops out at 6750 kbps under the height and frame-rate limits. The `mtt_live_encodes` metric reports that load.
 - aiomoqt 0.14.0 on aiopquic 0.7.0, with its epoch-anchored timing.
   - **Live start:** the runner picks each live run's start, the first video group boundary at least 5 s ahead, and passes it to ffmpeg and to the tool as `source.start_us` (pub_media `--start-at`). Restarts pick a new one. The clock content shows that capture time, with the flash and beep on its whole seconds.
