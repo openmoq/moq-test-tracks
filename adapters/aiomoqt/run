@@ -80,7 +80,8 @@ def plan(req, python=sys.executable):
     if f["catalog"] == "none":
         argv.append("--no-catalog")
     else:
-        argv += ["--target-latency", str(TARGET_LATENCY_MS)]
+        # Catalog once, then on change: late joiners get it from the relay.
+        argv += ["--catalog-interval", "0", "--target-latency", str(TARGET_LATENCY_MS)]
         if packaging == "loc":
             argv += ["--init-data", f["init_data"]]
         for t in video:

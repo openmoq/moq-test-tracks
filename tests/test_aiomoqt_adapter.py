@@ -59,6 +59,7 @@ def test_loc_h264_is_live_ts():
     assert "--start-at" not in argv  # check mode has no source yet
     assert argv[argv.index("--init-data") + 1] == "catalog" and "--no-catalog" not in argv
     assert argv[argv.index("--target-latency") + 1] == "250"
+    assert argv[argv.index("--catalog-interval") + 1] == "0"
     assert argv[argv.index("--fetch-history") + 1] == "300000"  # 2 groups of 2 s at 600 kbps
     assert argv[argv.index("--audio-frames-per-group") + 1] == "1"
     assert "--video-subgroups" not in argv and "--audio-subgroups" not in argv
@@ -116,6 +117,7 @@ def test_no_catalog():
     p = adapter.plan(_request(catalog="none", init_data=None))
     assert p["accept"] and "--no-catalog" in p["argv"] and "--init-data" not in p["argv"]
     assert "--target-latency" not in p["argv"] and "--catalog-bitrate" not in p["argv"]
+    assert "--catalog-interval" not in p["argv"]
     assert "parameter sets in the payload" in p["notes"][0]
 
 
