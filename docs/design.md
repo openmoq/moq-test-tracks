@@ -143,7 +143,8 @@ Query parameters:
 | `h` | 4 height | | `adel` | 11 audio delivery |
 | `fps` | 5 frame rate | | `dur` | 12 duration s |
 | `ac` | 6 audio codec | | `vt` | 13 video tracks |
-| `ch` | 7 channels | | | |
+| `ch` | 7 channels | | `mux` | 14 TS rate (`msfts`) |
+| | | | `pkts` | 15 TS packets per Object (`msfts`) |
 
 Bitrates follow from height and frame rate, and from codec and channels
 (draft §Bitrates). The parameters `vbr`, `abr`, `vfwd`, `afwd`, `afpg` and
@@ -181,6 +182,7 @@ Candidates, from the survey of openmoq tools:
 | Tool | Source | Serves |
 |------|--------|--------|
 | aiomoqt `pub_media` | `mpegts`, `mp4` | media: LOC / CMAF / LOCMAF, MSF / CMSF |
+| moq2ts `moq2ts-cli` ([adapters/moq2ts](../adapters/moq2ts/)) | `mpegts` (paced CBR) | MSFTS: an MPEG-TS stream carried unmodified as one track |
 | ffmpeg, [openmoq/FFmpeg](https://github.com/openmoq/FFmpeg) `-f moq` (libmoq) | — (encodes itself) | media: LOC / CMAF, MSF / CMSF; H.264, HEVC, AV1, AAC, Opus |
 | moxygen `moqtest_publisher` | — | moq-test-00 |
 | moqxr `openmoq-publisher` | `fmp4` | media: CMAF + CMSF |
@@ -222,6 +224,16 @@ values.
   live encoding.
 - **Slots:** live encodes have their own pool, counted in 1080p30 encodes by
   the pixel rate of a job's video tracks.
+- **MSFTS contribution tracks** (packaging `msfts`): ffmpeg encodes MPEG-2
+  video and MP2 audio into a TS null-padded to a constant rate (8, 20 or
+  40 Mb/s; PAT and PMT every 100 ms, PCR every 20 ms, a closed GOP per group)
+  and writes it to a second FIFO. TSDuck's `tsp -P regulate --pcr-synchronous`
+  plays it out to the tool's FIFO at the rate of its PCR, so the TS reaches the
+  publisher paced as a contribution feed would. Each stage has its own process
+  group. They are for testing MoQT against SRT and RIST as a contribution
+  transport: on demand only, for unrestricted and admin tokens, with a TTL
+  cap and a cap on their total rate (`msfts` in `config/policy.yaml`), since
+  one 20 Mb/s track sends about 216 GB a day into the relay.
 
 ### Real media (`clip`)
 

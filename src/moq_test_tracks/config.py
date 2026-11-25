@@ -59,6 +59,8 @@ class Policy:
     max_live_encodes: float = 4
     global_max_ttl_s: int = 86400
     key_max_jobs: int = 2
+    msfts_max_total_kbps: int = 80000  # mux rate of all active msfts jobs together
+    msfts_max_ttl_s: int = 86400
 
 
 @dataclass(frozen=True)
@@ -183,6 +185,7 @@ def load(root: Path | None = None) -> Config:
     p = _yaml(root / "config" / "policy.yaml")
     per_key = p.get("per_key_defaults", {})
     caps = p.get("global", {})
+    msfts = p.get("msfts", {})
     policy = Policy(
         namespace_prefix=tuple(p.get("namespace_prefix", ("openmoq",))),
         default_ttl_s=int(per_key.get("default_ttl_s", 1800)),
@@ -194,6 +197,8 @@ def load(root: Path | None = None) -> Config:
         max_live_encodes=float(caps.get("max_live_encodes", 4)),
         global_max_ttl_s=int(caps.get("max_ttl_s", 86400)),
         key_max_jobs=int(per_key.get("max_jobs", 2)),
+        msfts_max_total_kbps=int(msfts.get("max_total_kbps", 80000)),
+        msfts_max_ttl_s=int(msfts.get("max_ttl_s", 86400)),
     )
     clips = _clips(root / "media" / "sources.yaml")
     default = relays_doc.get("default", next(iter(relays)))
@@ -245,6 +250,14 @@ def job_errors(
         if kbps is not None and kbps > policy.max_video_kbps:
             errors.append(f"video bitrate {kbps} exceeds the cap {policy.max_video_kbps}")
     max_ttl = policy.global_max_ttl_s if unrestricted else policy.max_ttl_s
+    if spec.is_ts:
+        if not unrestricted:
+            errors.append("msfts tracks need an unrestricted or admin token")
+        max_ttl = min(max_ttl, policy.msfts_max_ttl_s)
+        if spec.mux_kbps and spec.mux_kbps > policy.msfts_max_total_kbps:
+            errors.append(
+                f"mux rate {spec.mux_kbps} exceeds the msfts cap {policy.msfts_max_total_kbps}"
+            )
     if not 1 <= ttl_s <= max_ttl:
         errors.append(f"ttl {ttl_s} s is outside 1-{max_ttl}")
     return errors

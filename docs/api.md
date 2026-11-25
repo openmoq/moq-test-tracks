@@ -71,7 +71,7 @@ query parameters. Give either a full namespace or parameters:
 
 **Track parameters.** Each one sets a tuple field of the draft. Required
 fields (1 to 7) you leave out take the preset's or the service's fallback
-values, and optional ones (8 to 13) take the value the draft gives them when
+values, and optional ones (8 to 15) take the value the draft gives them when
 omitted. The response always carries the namespace in its shortest form, the
 one the service publishes; a namespace you pass in is rewritten to it.
 
@@ -79,11 +79,24 @@ one the service publishes; a namespace you pass in is rewritten to it.
 |-------|-------|-------|-------|
 | `content` | 1 content: `clock`, `bars`, `noise`, or a clip id | `cat` | 8 catalog: `msf` or `none` (`msf`) |
 | `pkg` | 2 packaging | `init` | 9 init data (`catalog`) |
-| `vc` | 3 video codec | `gop` | 10 group ms (2000, or 2002 at 29_97) |
+| `vc` | 3 video codec | `gop` | 10 group ms (2000, or 2002 at 29_97; `msfts` 1000, or 1001) |
 | `h` | 4 height | `adel` | 11 audio delivery: `1`–`100` frames per group, or `dgram` (1) |
 | `fps` | 5 frame rate | `dur` | 12 duration s (0) |
 | `ac` | 6 audio codec | `vt` | 13 video tracks: `1`, `alt2`–`alt7`, `view2`–`view16` (1) |
-| `ch` | 7 channels | | |
+| `ch` | 7 channels | `mux` | 14 `msfts` TS rate: `8000`, `20000` or `40000` kbps (8000 at 720, 20000 at 1080) |
+| | | `pkts` | 15 `msfts` TS packets per Object: `1`–`348` (7) |
+
+**MSFTS contribution tracks.** Packaging `msfts` with video `mpeg2` and audio
+`mp2` or `none`, at height 720 or 1080, is an MPEG-TS stream at a constant
+rate, null padded, published unmodified as one track through the `moq2ts`
+tool with `mode` `namespace`. The TS rate sets the MPEG-2 video rate: 6500,
+17000 or 36000 kbps. Fields 11 and 13 do not apply (`_`).
+`openmoq/moq2ts/mtt_00/clock/msfts/mpeg2/1080/25/mp2/2` is the 20 Mb/s track;
+`…/mp2/2/msf/catalog/1000/_/0/_/40000` the 40 Mb/s one. These jobs need an
+`unrestricted` or admin token, run at most 24 h (`msfts.max_ttl_s`; a job
+without `ttl_s` gets the smaller of that and the default), and all active
+ones together stay within `msfts.max_total_kbps` (80000) of TS rate; past it
+a job is refused with 429.
 
 Bitrates are not parameters: the draft derives the video bitrate from height
 and frame rate, and the audio bitrate from codec and channels.

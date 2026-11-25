@@ -9,7 +9,7 @@ from fractions import Fraction
 
 import pytest
 
-from moq_test_tracks.content.recipes import RecipeError, loop_seconds, source_command
+from moq_test_tracks.content.recipes import RecipeError, loop_seconds, pacer_command, source_command
 from moq_test_tracks.spec import decode, from_slash
 
 BASE = "p/mtt_00/clock/loc/h264/720/30/aac/2"
@@ -219,3 +219,39 @@ def test_clip_ladder_scales_the_mezzanine():
     assert "scale=960:540" in _value(argv, "-filter:v") and "-c:a" not in argv
     with pytest.raises(RecipeError, match="mp4 loops"):
         source_command(spec, "mpegts", "o.ts", clip)
+
+
+TS = "p/mtt_00/clock/msfts/mpeg2/1080/25/mp2/2"
+
+
+@pytest.mark.parametrize(
+    "suffix, mux, video, vbv",
+    [
+        ("", "20000000", "17000k", "6000k"),
+        ("/msf/catalog/1000/_/0/_/40000", "40000000", "36000k", "12706k"),
+        ("/msf/catalog/1000/_/0/_/8000", "8000000", "6500k", "2295k"),
+    ],
+)
+def test_msfts_is_null_padded_cbr(suffix, mux, video, vbv):
+    argv = source_command(decode(from_slash(TS + suffix)).spec, "mpegts", "enc.ts")
+    assert "-re" not in argv  # paced by tsp from the PCR
+    assert _value(argv, "-c:v") == "mpeg2video" and _value(argv, "-bf") == "0"
+    assert _value(argv, "-flags") == "+cgop" and _value(argv, "-g") == "25"
+    assert _value(argv, "-b:v") == _value(argv, "-minrate") == _value(argv, "-maxrate") == video
+    assert _value(argv, "-bufsize") == vbv
+    assert _value(argv, "-c:a") == "mp2" and _value(argv, "-b:a") == "192k"
+    assert _value(argv, "-muxrate") == mux and _value(argv, "-mpegts_service_id") == "1"
+    assert _value(argv, "-pat_period") == "0.1" and _value(argv, "-pcr_period") == "20"
+    assert "-muxdelay" not in argv and argv[-1] == "enc.ts"
+
+
+def test_msfts_is_live_only():
+    with pytest.raises(RecipeError, match="live only"):
+        source_command(decode(from_slash(TS)).spec, "mp4", "o.mp4")
+
+
+def test_pacer():
+    assert pacer_command("enc.ts", "source.ts") == [
+        "tsp", "--buffer-size-mb", "1", "-I", "file", "enc.ts",
+        "-P", "regulate", "--pcr-synchronous", "-O", "file", "source.ts",
+    ]  # fmt: skip

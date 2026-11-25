@@ -408,6 +408,46 @@ def test_live_load_cap(root, monkeypatch):
         c.post("/stop-all", headers=AUTH)
 
 
+TS_NS = "openmoq/fake/mtt_00/{}/msfts/mpeg2/{}/25/mp2/2"
+
+
+def test_msfts_caps(root, monkeypatch):
+    async def ts_check(self, job):
+        return CheckResult(True, None, ["fake"])
+
+    monkeypatch.setattr(agent.Registry, "_adapter_check", ts_check)
+    (root / "config" / "policy.yaml").write_text(
+        "namespace_prefix: [openmoq]\nglobal: {max_jobs: 8}\n"
+        "msfts: {max_total_kbps: 30000, max_ttl_s: 600}\n"
+    )
+    app = create_app(config.load(root), token=TOKEN, work=root / "var" / "jobs", cache=root / "c")
+    with TestClient(app) as c:
+
+        def post(content, height, **extra):
+            body = {**_job(), "namespace": TS_NS.format(content, height), "unrestricted": True}
+            return c.post("/jobs", json={**body, **extra}, headers=AUTH)
+
+        assert post("clock", 1080).status_code == 201  # 20000 kbps
+        assert post("bars", 720).status_code == 201  # 8000
+        full = post("noise", 720)
+        assert full.status_code == 429 and "28000 in use, this job needs 8000" in full.text
+        standard = post("noise", 720, unrestricted=False, owner="k1")
+        assert standard.status_code == 422 and "unrestricted or admin token" in standard.text
+        long = post("noise", 720, ttl_s=601)
+        assert long.status_code == 422 and "outside 1-600" in long.text
+        big = c.post(
+            "/jobs",
+            json={
+                **_job(),
+                "namespace": TS_NS.format("noise", 1080) + "/msf/catalog/1000/_/0/_/40000",
+                "unrestricted": True,
+            },
+            headers=AUTH,
+        )
+        assert big.status_code == 422 and "exceeds the msfts cap 30000" in big.text
+        c.post("/stop-all", headers=AUTH)
+
+
 def test_clip_views_are_refused(client):
     views = {**_job(), "namespace": f"{CLIP_NS}/1/0/view2"}
     r = client.post("/check", json=views, headers=AUTH)

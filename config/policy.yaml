@@ -9,6 +9,11 @@ global:
   max_live_encodes: 4
   max_ttl_s: 86400
 
+# MSFTS contribution tracks (packaging msfts): unrestricted and admin tokens only.
+msfts:
+  max_total_kbps: 80000  # mux rate of all active msfts jobs together
+  max_ttl_s: 86400
+
 per_key_defaults:
   max_jobs: 16
   default_ttl_s: 1800
