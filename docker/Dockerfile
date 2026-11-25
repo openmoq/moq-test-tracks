@@ -17,8 +17,8 @@ RUN apt-get update \
        libasound2t64 libegl1 libfontconfig1 libfreetype6 libfribidi0 libgl1 libglx0 \
        libharfbuzz0b libice6 libjack-jackd2-0 libopengl0 libsm6 libusb-1.0-0 \
     && rm -rf /var/lib/apt/lists/*
-ADD --checksum=sha256:7e48a49f5c256318ab7c3330705c05ea57cf1152769b6df55248f0da7e3884c4 \
-    https://github.com/openmoq/moq2ts/releases/download/v1.3.0/moq2ts-cli-linux-x86_64.AppImage \
+ADD --checksum=sha256:2db630233ae4e0451112e0e7a139cf0ae9c439bebaf1a41e9a0d7c5d416ce788 \
+    https://github.com/openmoq/moq2ts/releases/download/v1.4.0-rc3/moq2ts-cli-linux-x86_64.AppImage \
     /tmp/moq2ts.AppImage
 WORKDIR /opt
 RUN chmod +x /tmp/moq2ts.AppImage \

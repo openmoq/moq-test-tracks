@@ -3,7 +3,7 @@ contract_version: 2
 id: moq2ts
 name: moq2ts-cli
 repository: https://github.com/openmoq/moq2ts
-version: 1.3.0
+version: 1.4.0-rc3
 protocols: [mtt_00]
 sources: [mpegts]
 stop:

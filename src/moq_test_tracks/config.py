@@ -60,7 +60,7 @@ class Policy:
     global_max_ttl_s: int = 86400
     key_max_jobs: int = 2
     msfts_max_total_kbps: int = 80000  # mux rate of all active msfts jobs together
-    msfts_max_ttl_s: int = 7200
+    msfts_max_ttl_s: int = 86400
 
 
 @dataclass(frozen=True)
@@ -198,7 +198,7 @@ def load(root: Path | None = None) -> Config:
         global_max_ttl_s=int(caps.get("max_ttl_s", 86400)),
         key_max_jobs=int(per_key.get("max_jobs", 2)),
         msfts_max_total_kbps=int(msfts.get("max_total_kbps", 80000)),
-        msfts_max_ttl_s=int(msfts.get("max_ttl_s", 7200)),
+        msfts_max_ttl_s=int(msfts.get("max_ttl_s", 86400)),
     )
     clips = _clips(root / "media" / "sources.yaml")
     default = relays_doc.get("default", next(iter(relays)))

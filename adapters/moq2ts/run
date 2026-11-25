@@ -29,6 +29,7 @@ TS_TRACK = "program-1"
 STATS_S = 2
 CHUNK = TS_PACKET * 348
 PIPE_BYTES = 1 << 20  # the unprivileged maximum: 200 ms at 40 Mb/s
+READY = "[ready]"
 _COUNTERS = re.compile(r"(\w+)=(\d+)")
 
 
@@ -59,16 +60,16 @@ def plan(req, tool=TOOL):
 
 
 def stats_counters(line):
-    """The counters of a [stats] line (objects, bytes, groups), or None for other output."""
+    """The counters of a [stats] line, or None for other output."""
     if not line.startswith("[stats]"):
         return None
     return {k: int(v) for k, v in _COUNTERS.findall(line)}
 
 
 class Feed:
-    """Copies the source FIFO to the tool's stdin in whole TS packets; reports ready on the
-    first bytes and stats every STATS_S. While the tool reads nothing (before a first
-    subscriber), whole chunks are dropped so the source stays on the wall clock."""
+    """Copies the source FIFO to the tool's stdin in whole TS packets and reports stats every
+    STATS_S. While the tool reads nothing, whole chunks are dropped so the source stays on
+    the wall clock."""
 
     def __init__(self, req, child, emit):
         self.req, self.child, self.emit = req, child, emit
@@ -77,6 +78,15 @@ class Feed:
         self.eof = False
         self.tool = {}  # the tool's last [stats] counters
         self.done = threading.Event()
+        self.up = False
+
+    def ready(self):
+        """The relay accepted the namespace; reported once, as the tool does."""
+        if not self.up:
+            self.up = True
+            endpoint = self.req["endpoints"][0]
+            up = {"url": endpoint["url"], "draft": endpoint["draft"], "state": "up"}
+            self.emit({"event": "ready", "endpoints": [up]})
 
     def pump(self):
         src = None
@@ -114,10 +124,6 @@ class Feed:
                 rest = rest[os.write(out, rest) :]
             except BlockingIOError:
                 continue
-        if not self.input_bytes:
-            endpoint = self.req["endpoints"][0]
-            up = {"url": endpoint["url"], "draft": endpoint["draft"], "state": "up"}
-            self.emit({"event": "ready", "endpoints": [up]})
         self.input_bytes += len(chunk)
 
     def report(self):
@@ -127,8 +133,10 @@ class Feed:
             ended = self.done.wait(STATS_S)
             t = time.monotonic() - t0
             dt = max(t - last[0], 1e-3)
-            sent = self.tool.get("bytes", 0)
-            track = {k: self.tool[k] for k in ("objects", "groups") if k in self.tool}
+            sent = self.tool.get("sent_bytes", 0)
+            track = {"objects": self.tool["sent_objects"]} if "sent_objects" in self.tool else {}
+            if "groups" in self.tool:
+                track["groups"] = self.tool["groups"]
             track["kbps"] = round((sent - last[1]) * 8 / dt / 1000)
             stats = {"event": "stats", "t": round(t, 3), "tracks": {TS_TRACK: track}}
             stats["input_kbps"] = round((self.input_bytes - last[2]) * 8 / dt / 1000)
@@ -162,10 +170,12 @@ def run(req):
         t.start()
     for line in child.stdout:
         tool_stats = stats_counters(line)
-        if tool_stats is None:
-            sys.stderr.write(line)  # [final] and the rest go to the job log
-        else:
+        if tool_stats is not None:
             feed.tool = tool_stats
+            continue
+        if line.startswith(READY):
+            feed.ready()
+        sys.stderr.write(line)  # [ready], [final] and the rest go to the job log
     rc = child.wait()
     feed.done.set()
     for t in threads:

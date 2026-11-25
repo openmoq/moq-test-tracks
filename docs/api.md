@@ -93,7 +93,7 @@ tool with `mode` `namespace`. The TS rate sets the MPEG-2 video rate: 6500,
 17000 or 36000 kbps. Fields 11 and 13 do not apply (`_`).
 `openmoq/moq2ts/mtt_00/clock/msfts/mpeg2/1080/25/mp2/2` is the 20 Mb/s track;
 `…/mp2/2/msf/catalog/1000/_/0/_/40000` the 40 Mb/s one. These jobs need an
-`unrestricted` or admin token, run at most 2 h (`msfts.max_ttl_s`; a job
+`unrestricted` or admin token, run at most 24 h (`msfts.max_ttl_s`; a job
 without `ttl_s` gets the smaller of that and the default), and all active
 ones together stay within `msfts.max_total_kbps` (80000) of TS rate; past it
 a job is refused with 429.

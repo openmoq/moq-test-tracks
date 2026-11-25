@@ -96,9 +96,11 @@ def test_manifest_matches_the_repo_config():
 FAKE_TOOL = """\
 import os, sys, time
 got = 0
+print("[ready] namespace accepted", flush=True)
 while chunk := sys.stdin.buffer.read(1316):
     got += len(chunk)
-    print(f"[stats] objects={got // 1316} bytes={got} groups=1", flush=True)
+    n = got // 1316
+    print(f"[stats] objects={n} bytes={got} groups=1 sent_objects={n} sent_bytes={got}", flush=True)
 print(f"[final] objects={got // 1316} bytes={got} groups=1 sent_objects=1 sent_bytes=1", flush=True)
 sys.exit(int(os.environ.get("FAKE_RC", "0")))
 """
@@ -147,7 +149,14 @@ def test_run_feeds_the_tool_and_reports(fake_run, capfd):
         "endpoints": [{"url": "moqt://relay:4443", "draft": 18, "state": "up"}],
     }
     assert events[-1] == {"event": "done", "reason": "end of source"}
+    assert [e["event"] for e in events].count("ready") == 1
     assert "[final] objects=400 bytes=526400" in err and "[stats]" not in err
+
+
+def test_no_ready_before_the_relay_accepts(fake_run, capfd):
+    quiet = "import sys; sys.stdin.buffer.read()"
+    assert fake_run(tool=quiet) == 0
+    assert "ready" not in [e["event"] for e in _events(capfd.readouterr()[0])]
 
 
 @pytest.mark.parametrize("code, expected", [(1, 69), (2, 70)])
@@ -176,7 +185,8 @@ def test_stats_translate_the_tool_counters(monkeypatch):
     monkeypatch.setattr(adapter, "STATS_S", 0.01)
     emitted = []
     feed = adapter.Feed(_request(), None, emitted.append)
-    feed.tool = adapter.stats_counters("[stats] objects=10 bytes=13160 groups=2\n")
+    line = "[stats] objects=12 bytes=15792 groups=2 sent_objects=10 sent_bytes=13160\n"
+    feed.tool = adapter.stats_counters(line)
     feed.input_bytes = 26320
     threading.Timer(0.035, feed.done.set).start()
     feed.report()
