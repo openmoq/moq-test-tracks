@@ -132,6 +132,9 @@ def test_preset_fallbacks():
     assert not audio.has_video and audio.video_height is None
     assert presets.resolve({"adel": "dgram"}).audio_datagram
     assert presets.resolve({"vt": "alt3", "h": "1080"}).ladder() == (1080, 720, 540)
+    ts = {"pkg": "msfts", "vc": "h265", "ac": "s302m_aac_ac3", "h": "1080", "fps": "59_94"}
+    spec = presets.resolve({**ts, "gop": "2002", "pkts": "348", "ch": "2"})
+    assert (spec.audio_channels, spec.mux_kbps, spec.segment_bytes) == (None, 20000, 65424)
     with pytest.raises(presets.PresetError, match="vbr: video bitrate follows"):
         presets.resolve({"h": "360", "vbr": "900"})
     cmaf = presets.resolve({}, "cmaf")

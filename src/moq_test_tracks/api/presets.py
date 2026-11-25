@@ -7,7 +7,16 @@
 
 from __future__ import annotations
 
-from ..spec.fields import FIELDS, NA, TS, VERSION, TrackSpec, applies, omitted_value
+from ..spec.fields import (
+    FIELDS,
+    NA,
+    TS,
+    VERSION,
+    TrackSpec,
+    applies,
+    has_channels,
+    omitted_value,
+)
 from ..spec.namespace import decode
 
 # Query parameter -> field name (docs/design.md).
@@ -85,6 +94,7 @@ def resolve(params: dict[str, str], preset: str | None = None) -> TrackSpec:
         "video": p["vc"] != "none",
         "audio": p["ac"] != "none",
         "ts": p["pkg"] == TS,
+        "channels": has_channels(p["ac"]),
     }
     opt = {name: key for key, name in PARAMS.items()}
     tokens: list[str] = []

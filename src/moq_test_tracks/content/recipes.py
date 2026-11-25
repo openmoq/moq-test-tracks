@@ -11,7 +11,14 @@ import math
 from fractions import Fraction
 from pathlib import Path
 
-from ..spec.fields import AUDIO_FRAME_SAMPLES, AUDIO_SAMPLE_RATE, TrackSpec, VideoTrack
+from ..spec.fields import (
+    AUDIO_FRAME_SAMPLES,
+    AUDIO_SAMPLE_RATE,
+    AUDIO_SET,
+    AUDIO_SET_TRACKS,
+    TrackSpec,
+    VideoTrack,
+)
 
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 LOOP_TARGET_S = 60
@@ -22,6 +29,15 @@ FORMATS = ("mpegts", "mp4")
 TS_VBV_S = Fraction(6, 17)
 # TSDuck checks GitHub for new versions unless this is set.
 PACER_ENV = {"TSDUCK_NO_VERSION_CHECK": "1"}
+PACER_WAIT_MS = 10
+# H.265 msfts: the layout of a broadcast contribution feed.
+TS_PMT_PID = 0x65
+TS_VIDEO_PID = 0x64
+TS_AUDIO_PIDS = (0xC8, 0xC9, 0xCA)
+TS_SCTE35_PID = 0x1F7  # declared in the PMT, never sent
+TS_PSI_S = 0.48
+TS_PROVIDER = "OpenMOQ"
+LOOP_THREADS = 4  # x265 threads for a loop render, which runs beside live jobs
 
 
 class RecipeError(ValueError):
@@ -99,13 +115,18 @@ def _audio_input(spec: TrackSpec, start_us: int | None) -> list[str]:
     return ["-f", "lavfi", "-i", graph]
 
 
-def _clip_video_filter(spec: TrackSpec, attribution: str, track: VideoTrack | None) -> list[str]:
+def _clip_video_filter(clip: dict, spec: TrackSpec, track: VideoTrack | None) -> list[str]:
     """Clip picture scaled and padded to the track's size and the spec's rate, with its credit
-    line."""
+    line, and its delogo area blurred out first."""
     w, h = (track.width, track.height) if track else (spec.video_width, spec.video_height)
     fontsize = max(10, h // 36)
+    attribution = clip["attribution"]
+    delogo = ""
+    if clip.get("delogo"):
+        x, y, dw, dh = clip["delogo"]
+        delogo = f"delogo=x={x}:y={y}:w={dw}:h={dh},"
     graph = (
-        f"fps={_rate(spec.fps)},"
+        f"{delogo}fps={_rate(spec.fps)},"
         f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,"
         f"drawtext=fontfile={FONT}:fontsize={fontsize}:fontcolor=white@0.8:box=1:boxcolor=black@0.4"
         f":x=8:y=h-th-8:text='{attribution}'"
@@ -135,6 +156,18 @@ def _video_codec_opts(spec: TrackSpec, fmt: str, video_kbps: int) -> list[str]:
             "-tune", "zerolatency", "-bf", "0", "-sc_threshold", "0",
             "-x264-params", "repeat-headers=1", *common, *rate,
         ]  # fmt: skip
+    if spec.video_codec == "h265" and spec.is_ts:
+        # CBR within the TS rate; random access points are CRA (open GOP).
+        params = (
+            f"keyint={gop}:min-keyint={gop}:scenecut=0:bframes=0:open-gop=1:repeat-headers=1"
+            f":aud=1:strict-cbr=1:colorprim=bt709:transfer=bt709:colormatrix=bt709"
+            f":pools={LOOP_THREADS}"
+        )
+        vbv = f"{math.ceil(video_kbps * TS_VBV_S)}k"
+        return [
+            "-c:v", "libx265", "-preset", "fast", "-profile:v", "main", "-x265-params", params,
+            "-tag:v", "hvc1", *common, "-b:v", kbps, "-maxrate", kbps, "-bufsize", vbv,
+        ]  # fmt: skip
     if spec.video_codec == "h265":
         params = f"keyint={gop}:min-keyint={gop}:scenecut=0:bframes=0:repeat-headers=1"
         tag = ["-tag:v", "hvc1"] if fmt == "mp4" else []
@@ -157,6 +190,9 @@ def _video_codec_opts(spec: TrackSpec, fmt: str, video_kbps: int) -> list[str]:
 
 
 def _audio_encoder(spec: TrackSpec) -> list[str]:
+    if ts_loop(spec):  # the loop holds PCM, encoded live by ts_mux_command
+        channels = spec.audio_channels or 2
+        return ["-c:a", "pcm_s24le", "-ar", str(AUDIO_SAMPLE_RATE), "-ac", str(channels)]
     common = ["-ar", str(AUDIO_SAMPLE_RATE), "-ac", str(spec.audio_channels)]
     if spec.audio_codec == "aac":
         return ["-c:a", "aac", "-b:a", f"{spec.audio_kbps}k", *common]
@@ -198,12 +234,58 @@ def loop_seconds(spec: TrackSpec, target: int | None = None) -> Fraction:
     return unit * max(1, math.floor(target / unit))
 
 
-def pacer_command(source: str | Path, output: str | Path) -> list[str]:
-    """tsp argv that plays an msfts stream out to output at the rate of its PCR."""
-    return [
-        "tsp", "--buffer-size-mb", "1", "-I", "file", str(source),
-        "-P", "regulate", "--pcr-synchronous", "-O", "file", str(output),
+def ts_loop(spec: TrackSpec) -> bool:
+    """An msfts spec whose video is encoded once into a cached loop (format mp4) and played
+    out by ts_mux_command; MPEG-2 is encoded live."""
+    return spec.is_ts and spec.video_codec == "h265"
+
+
+def ts_mux_command(spec: TrackSpec, loop: str | Path, output: str | Path) -> list[str]:
+    """ffmpeg argv that plays a ts_loop() loop out as the spec's TS, without pacing: the video
+    copied, the audio encoded from the loop's PCM, on the TS_*_PID layout."""
+    argv = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "warning", "-y"]
+    argv += ["-stream_loop", "-1", "-i", str(loop), "-map", "0:v:0", "-c:v", "copy"]
+    pids = [TS_VIDEO_PID]
+    if spec.audio_codec == AUDIO_SET:
+        # The AC-3 track carries the pair as front left and right of 5.1.
+        graph = "[0:a:0]asplit=3[pcm][aac][a2];[pcm]aformat=sample_fmts=s32[s302m];"
+        graph += "[a2]pan=5.1|FL=FL|FR=FR[ac3]"
+        argv += ["-filter_complex", graph]
+        for i, (codec, _, kbps) in enumerate(AUDIO_SET_TRACKS):
+            argv += ["-map", f"[{codec}]", f"-c:a:{i}", codec]
+            argv += [] if codec == "s302m" else [f"-b:a:{i}", f"{kbps}k"]
+        argv += ["-strict", "experimental"]  # ffmpeg's s302m encoder
+        pids += TS_AUDIO_PIDS
+    elif spec.has_audio:
+        common = ["-ar", str(AUDIO_SAMPLE_RATE), "-ac", str(spec.audio_channels)]
+        argv += ["-map", "0:a:0", "-c:a", "mp2", "-b:a", f"{spec.audio_kbps}k", *common]
+        pids += TS_AUDIO_PIDS[:1]
+    for i, pid in enumerate(pids):
+        argv += ["-streamid", f"{i}:{pid}"]
+    name = spec.clip or spec.content
+    argv += [
+        "-f", "mpegts", "-muxrate", str(spec.mux_kbps * 1000), "-mpegts_service_id", "1",
+        "-mpegts_pmt_start_pid", str(TS_PMT_PID), "-metadata", f"service_name=mtt {name}",
+        "-metadata", f"service_provider={TS_PROVIDER}", "-pat_period", str(TS_PSI_S),
+        "-sdt_period", str(TS_PSI_S), "-pcr_period", "20", str(output),
     ]  # fmt: skip
+    return argv
+
+
+def pacer_command(
+    source: str | Path, output: str | Path, spec: TrackSpec | None = None
+) -> list[str]:
+    """tsp argv that plays an msfts stream out to output at the rate of its PCR. A ts_loop()
+    stream also gains a CAT and an SCTE-35 component in the PMT."""
+    argv = ["tsp", "--buffer-size-mb", "1", "-I", "file", str(source)]
+    if spec is not None and ts_loop(spec):
+        argv += [
+            "-P", "pmt", "--add-pid", f"{TS_SCTE35_PID:#x}/0x86",
+            "--add-registration", "0x43554549", "-P", "cat", "--create",
+        ]  # fmt: skip
+    # regulate waits at least 50 ms by default, and moq2ts ends an Object early on such a gap.
+    regulate = ["-P", "regulate", "--pcr-synchronous", "--wait-min", str(PACER_WAIT_MS)]
+    return argv + regulate + ["-O", "file", str(output)]
 
 
 def source_command(
@@ -225,8 +307,8 @@ def source_command(
         raise RecipeError(f"unknown source format {fmt}")
     argv = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "warning", "-y"]
     live = fmt == "mpegts"
-    if spec.is_ts and not live:
-        raise RecipeError("msfts is live only")
+    if spec.is_ts and live == ts_loop(spec):
+        raise RecipeError(f"msfts {spec.video_codec} is {'a loop' if live else 'live'} only")
     # msfts is paced downstream by its PCR (pacer_command).
     realtime = ["-re"] if live and not spec.is_ts else []
     tracks = spec.video_set()
@@ -246,7 +328,7 @@ def source_command(
         inputs += realtime + ["-stream_loop", "-1", "-i", str(clip["path"])]
         if spec.has_video:
             maps += ["-map", "0:v:0"]
-            encoders += _clip_video_filter(spec, clip["attribution"], track)
+            encoders += _clip_video_filter(clip, spec, track)
             encoders += _video_encoder(spec, fmt, track)
         if with_audio:
             maps += ["-map", "0:a:0"]
@@ -278,5 +360,6 @@ def source_command(
         # Stamped by sample count, as a mezzanine's millisecond timestamps leave
         # uneven frame durations.
         argv += ["-filter:a", "asetpts=N/SR/TB"]
-    argv += ["-t", f"{float(seconds):.3f}", "-movflags", "+faststart", "-f", "mp4", str(output)]
+    container = "mov" if spec.is_ts else "mp4"  # mp4 holds no PCM
+    argv += ["-t", f"{float(seconds):.3f}", "-movflags", "+faststart", "-f", container, str(output)]
     return argv

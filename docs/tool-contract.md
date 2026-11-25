@@ -261,9 +261,12 @@ above for video and audio Objects, Timing and init data give way to these:
   `tracks` lists the catalog, that track and its media timeline track
   (`catalog`, `program-1`, `program-1.timeline` with moq2ts).
 - An Object is `ts_packets` whole 188-byte packets; a Group starts at a
-  random access point, so it is one closed GOP (`group_ms`).
+  random access point, so it is one GOP (`group_ms`): closed with MPEG-2,
+  open (CRA) with H.265.
 - The catalog's root `initDataList` carries the PAT and the PMT.
-- `mux_kbps` is the TS rate, `video_kbps` the MPEG-2 video rate within it.
+- `mux_kbps` is the TS rate, `video_kbps` the video rate within it.
+- Audio `s302m_aac_ac3` is three audio components: s302m, AAC and AC-3
+  (`audio_kbps` is their sum, `audio_channels` is null).
 
 ## Source media
 
@@ -279,7 +282,7 @@ values. Every source format guarantees:
 
 | `format` | Delivery | Notes |
 |----------|----------|-------|
-| `mpegts` | FIFO, live | H.264/H.265 with AUDs, AAC in ADTS, or Opus. Several video tracks are one video stream each, in Track Name order, before the audio. With packaging `msfts`: MPEG-2 video and MP2 audio in one program, null-padded to a constant `mux_kbps`, PAT and PMT every 100 ms, PCR every 20 ms, played out at the rate of its PCR (TSDuck `regulate`). |
+| `mpegts` | FIFO, live | H.264/H.265 with AUDs, AAC in ADTS, or Opus. Several video tracks are one video stream each, in Track Name order, before the audio. With packaging `msfts`: one program null-padded to a constant `mux_kbps`, PCR every 20 ms, played out at the rate of its PCR without pauses of 50 ms or more (TSDuck `regulate`). MPEG-2 video and MP2 audio come with PAT and PMT every 100 ms. H.265 video has the PIDs of a contribution feed (PMT 0x65, video 0x64, audio from 0xC8), PSI every 480 ms, a CAT, and an SCTE-35 component (0x1F7) declared without packets. |
 | `annexb` | two FIFOs, live: `video_path` (Annex B) and `audio_path` (ADTS AAC or Ogg Opus) | For tools that take elementary streams. A path is `null` when the namespace has no video or no audio. |
 | `fmp4` | FIFO, live | An init segment, then one moof+mdat per frame (CMAF chunks) |
 | `flv` | FIFO, live | H.264 + AAC only |

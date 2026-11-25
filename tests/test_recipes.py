@@ -9,7 +9,14 @@ from fractions import Fraction
 
 import pytest
 
-from moq_test_tracks.content.recipes import RecipeError, loop_seconds, pacer_command, source_command
+from moq_test_tracks.content.recipes import (
+    RecipeError,
+    loop_seconds,
+    pacer_command,
+    source_command,
+    ts_loop,
+    ts_mux_command,
+)
 from moq_test_tracks.spec import decode, from_slash
 
 BASE = "p/mtt_00/clock/loc/h264/720/30/aac/2"
@@ -250,8 +257,67 @@ def test_msfts_is_live_only():
         source_command(decode(from_slash(TS)).spec, "mp4", "o.mp4")
 
 
+HEVC_TS = "p/mtt_00/clock/msfts/h265/1080/59_94/s302m_aac_ac3/_/msf/catalog/2002/_/0/_/20000/348"
+
+
+def test_msfts_h265_is_a_cbr_loop_with_pcm():
+    spec = decode(from_slash(HEVC_TS)).spec
+    assert ts_loop(spec) and not ts_loop(decode(from_slash(TS)).spec)
+    with pytest.raises(RecipeError, match="a loop only"):
+        source_command(spec, "mpegts", "enc.ts")
+    argv = source_command(spec, "mp4", "loop.mp4")
+    assert _value(argv, "-c:v") == "libx265" and _value(argv, "-profile:v") == "main"
+    params = _value(argv, "-x265-params")
+    for p in ("keyint=120", "bframes=0", "open-gop=1", "strict-cbr=1", "colorprim=bt709"):
+        assert p in params.split(":")
+    assert _value(argv, "-b:v") == _value(argv, "-maxrate") == "15700k"
+    assert _value(argv, "-bufsize") == "5542k"
+    assert _value(argv, "-c:a") == "pcm_s24le" and _value(argv, "-ac") == "2"
+    assert argv[-3:] == ["-f", "mov", "loop.mp4"] and _value(argv, "-t") == "64.064"
+
+
+def test_msfts_h265_mux_carries_the_audio_set():
+    spec = decode(from_slash(HEVC_TS)).spec
+    argv = ts_mux_command(spec, "loop.mp4", "enc.ts")
+    i = argv.index("-i")
+    assert argv[i - 2 : i + 2] == ["-stream_loop", "-1", "-i", "loop.mp4"]
+    assert _value(argv, "-c:v") == "copy" and "-re" not in argv
+    assert [_value(argv, f"-c:a:{i}") for i in range(3)] == ["s302m", "aac", "ac3"]
+    assert (_value(argv, "-b:a:1"), _value(argv, "-b:a:2")) == ("256k", "448k")
+    assert "pan=5.1|FL=FL|FR=FR" in _value(argv, "-filter_complex")
+    ids = [argv[i + 1] for i, a in enumerate(argv) if a == "-streamid"]
+    assert ids == ["0:100", "1:200", "2:201", "3:202"]
+    assert (
+        _value(argv, "-mpegts_pmt_start_pid") == "101" and _value(argv, "-strict") == "experimental"
+    )
+    assert _value(argv, "-muxrate") == "20000000" and _value(argv, "-pat_period") == "0.48"
+    assert "service_name=mtt clock" in argv and argv[-1] == "enc.ts"
+    mp2 = decode(from_slash("p/mtt_00/clock/msfts/h265/720/50/mp2/2")).spec
+    argv = ts_mux_command(mp2, "loop.mp4", "enc.ts")
+    assert _value(argv, "-c:a") == "mp2" and "-filter_complex" not in argv
+    assert [argv[i + 1] for i, a in enumerate(argv) if a == "-streamid"] == ["0:100", "1:200"]
+
+
+def test_clip_delogo_comes_first():
+    clip = {**CLIP, "delogo": [3500, 60, 280, 200]}
+    argv = source_command(_spec(content="clip"), "mp4", "o.mp4", clip)
+    graph = argv[argv.index("-filter:v") + 1]
+    assert graph.startswith("delogo=x=3500:y=60:w=280:h=200,fps=30/1,")
+
+
 def test_pacer():
     assert pacer_command("enc.ts", "source.ts") == [
         "tsp", "--buffer-size-mb", "1", "-I", "file", "enc.ts",
-        "-P", "regulate", "--pcr-synchronous", "-O", "file", "source.ts",
+        "-P", "regulate", "--pcr-synchronous", "--wait-min", "10", "-O", "file", "source.ts",
     ]  # fmt: skip
+    assert pacer_command("enc.ts", "s.ts", decode(from_slash(TS)).spec) == pacer_command(
+        "enc.ts", "s.ts"
+    )
+    argv = pacer_command("enc.ts", "s.ts", decode(from_slash(HEVC_TS)).spec)
+    assert argv[argv.index("pmt") + 1 :][:4] == [
+        "--add-pid",
+        "0x1f7/0x86",
+        "--add-registration",
+        "0x43554549",
+    ]
+    assert argv[argv.index("cat") + 1] == "--create" and argv.index("cat") < argv.index("regulate")

@@ -25,6 +25,7 @@ from moq_test_tracks.spec import (
 )
 from moq_test_tracks.spec.fields import (
     AUDIO_CODECS,
+    AUDIO_SET,
     CATALOG_INIT_PACKAGING,
     CATALOG_PACKAGING,
     CATALOGS,
@@ -44,6 +45,7 @@ from moq_test_tracks.spec.fields import (
     TS_DEFAULT_MUX_KBPS,
     TS_MAX_PACKETS,
     TS_MUX_KBPS,
+    TS_ONLY_CODECS,
     TS_VIDEO_CODECS,
     VERSION,
     VIDEO_CODECS,
@@ -201,12 +203,26 @@ def test_msfts_trailing_fields():
         (PREFIX + "clock/msfts/mpeg2/1080/25/mp2/2/msf/catalog/1000/_/0/_/20000/349", 15),
         (FULL_FORM + "/8000", 14),
         (FULL_FORM + "/_/7", 15),
+        (PREFIX + "clock/msfts/mpeg2/1080/25/s302m_aac_ac3/_", 6),
+        (PREFIX + "clock/msfts/h265/1080/50/s302m_aac_ac3/2", 7),
+        (PREFIX + "clock/loc/h264/1080/50/s302m_aac_ac3/_", 6),
     ],
 )
 def test_msfts_rules(text, index):
     with pytest.raises(NamespaceError) as e:
         decode(_ns(text))
     assert e.value.errors[0].index == index
+
+
+STAND_IN = PREFIX + "clock/msfts/h265/1080/59_94/s302m_aac_ac3/_/msf/catalog/2002/_/0/_/20000/348"
+
+
+def test_msfts_h265_with_the_audio_set():
+    spec = decode(_ns(STAND_IN)).spec
+    assert (spec.video_kbps, spec.audio_kbps, spec.audio_channels) == (15700, 3392, None)
+    assert (spec.frames_per_group, spec.segment_bytes) == (120, 65424)
+    assert to_slash(encode(spec, ("example",))) == STAND_IN
+    assert decode(_ns(PREFIX + "clock/msfts/h265/720/23_976/mp2/2")).spec.video_kbps == 4000
 
 
 def test_bitrates():
@@ -383,19 +399,23 @@ clip_ids = st.from_regex(r"[a-z0-9_]{1,12}", fullmatch=True).filter(
 
 
 def _ts_spec(draw, content, clip):
-    rate = draw(st.sampled_from(MPEG2_RATES))
+    video_codec = draw(st.sampled_from(TS_VIDEO_CODECS))
+    rates = MPEG2_RATES if video_codec == "mpeg2" else [*FRACTIONAL_RATES, "25", "50", "60"]
+    rate = draw(st.sampled_from(rates))
     step = group_ms_step(rate)
-    audio_codec = draw(st.sampled_from(TS_AUDIO_CODECS))
+    audio = [c for c in TS_AUDIO_CODECS if c != AUDIO_SET or video_codec == "h265"]
+    audio_codec = draw(st.sampled_from(audio))
+    channels = None if audio_codec in ("none", AUDIO_SET) else draw(st.sampled_from((1, 2)))
     return TrackSpec(
         content=content,
         clip=clip,
         catalog="msf",
         packaging=TS,
-        video_codec=draw(st.sampled_from(TS_VIDEO_CODECS)),
+        video_codec=video_codec,
         video_height=draw(st.sampled_from(tuple(TS_DEFAULT_MUX_KBPS))),
         frame_rate=rate,
         audio_codec=audio_codec,
-        audio_channels=None if audio_codec == "none" else draw(st.sampled_from((1, 2))),
+        audio_channels=channels,
         init_data="catalog",
         group_ms=draw(st.integers(math.ceil(100 / step), 10000 // step)) * step,
         audio_delivery=None,
@@ -420,8 +440,8 @@ def specs(draw):
         init_data = "catalog"
     else:
         init_data = draw(st.sampled_from(INIT_DATA))
-    video_codec = draw(st.sampled_from([c for c in VIDEO_CODECS if c != "mpeg2"]))
-    audio_codec = draw(st.sampled_from([c for c in AUDIO_CODECS if c != "mp2"]))
+    video_codec = draw(st.sampled_from([c for c in VIDEO_CODECS if c not in TS_ONLY_CODECS]))
+    audio_codec = draw(st.sampled_from([c for c in AUDIO_CODECS if c not in TS_ONLY_CODECS]))
     video = dict.fromkeys(("video_height", "frame_rate", "group_ms", "video_tracks"))
     if video_codec != "none":
         rate = draw(st.sampled_from([*FRACTIONAL_RATES, *(str(n) for n in range(1, 121))]))

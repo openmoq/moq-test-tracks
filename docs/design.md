@@ -230,7 +230,12 @@ values.
   and writes it to a second FIFO. TSDuck's `tsp -P regulate --pcr-synchronous`
   plays it out to the tool's FIFO at the rate of its PCR, so the TS reaches the
   publisher paced as a contribution feed would. Each stage has its own process
-  group. They are for testing MoQT against SRT and RIST as a contribution
+  group. H.265 tracks follow the layout of a broadcast contribution feed (PIDs,
+  PSI every 480 ms, a CAT, an SCTE-35 declaration, CRA random access points)
+  and can carry s302m, AAC and AC-3 together (`s302m_aac_ac3`). Their video is
+  encoded once into the mp4 loop cache, with the audio as PCM; ffmpeg copies
+  it into the TS and encodes only the audio live, so they count no live
+  encode. They are for testing MoQT against SRT and RIST as a contribution
   transport: on demand only, for unrestricted and admin tokens, with a TTL
   cap and a cap on their total rate (`msfts` in `config/policy.yaml`), since
   one 20 Mb/s track sends about 216 GB a day into the relay.
@@ -255,7 +260,8 @@ Synthetic content stays the default. For `clip`:
   `audio` when the video file has none, relative to `<var>/media` on the
   runner volume. `mtt media import <id>` copies them, as is, into the same
   kind of mezzanine. `loop_s` sets the window a clip's loop fits in (default 60 s):
-  the full 150 s Artemis II window gives a 144 s loop.
+  the full 150 s Artemis II window gives a 144 s loop. `delogo: [x, y, w, h]`
+  (source pixels) blurs a broadcaster's logo out before scaling.
 - **Live sources:** a fixed recording, rather than the live stream, keeps a
   test's picture and sound the same on every run.
 - **Encoding:** jobs encode the newest recording to the namespace's shape:

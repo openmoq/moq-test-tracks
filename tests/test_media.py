@@ -29,6 +29,8 @@ def test_repo_clips_load():
     tv = clips["artemis_tv"]
     assert tv.video == "artemis/synced/tv.mp4" and tv.audio == "artemis/audio/tv.m4a"
     assert tv.loop_s == 150 and tv.url is None
+    launch = clips["artemis_launch"]
+    assert launch.delogo == (3356, 100, 304, 264) and tv.delogo is None
 
 
 @pytest.mark.parametrize(
@@ -42,6 +44,10 @@ def test_repo_clips_load():
         ({"url": None, "video": "../etc/x.mp4"}, "relative to"),
         ({"url": None, "video": "/abs/x.mp4"}, "relative to"),
         ({"url": None, "video": "a.mp4", "loop_s": 5}, "loop_s"),
+        ({"delogo": [1, 2, 3]}, "delogo"),
+        ({"delogo": [1, 2, 0, 4]}, "delogo"),
+        ({"delogo": [-1, 2, 3, 4]}, "delogo"),
+        ({"delogo": "1:2:3:4"}, "delogo"),
     ],
 )
 def test_clip_validation(tmp_path, entry, problem):

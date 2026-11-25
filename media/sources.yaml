@@ -42,6 +42,17 @@ clips:
     license: Akamai-hosted live stream, used with Akamai's permission (Will Law)
     attribution: Akamai live channel
 
+  # Artemis II launch (2026-04-01) at 59.94 fps: NASA Goddard's edited 4K
+  # program (svs.gsfc.nasa.gov/31385), 240 s. delogo removes the NASA bug.
+  artemis_launch:
+    title: "Artemis II launch: NASA edit, 4K59.94"
+    url: https://svs.gsfc.nasa.gov/vis/a030000/a031300/a031385/Artemis-2-launch-long-4K.mp4
+    capture_s: 240
+    loop_s: 232
+    delogo: [3356, 100, 304, 264]
+    license: NASA footage and audio under NASA media guidelines; no NASA endorsement; no NASA logos
+    attribution: NASA
+
   # Artemis II launch (2026-04-01), nine views synced to one 150 s window with
   # T0 at 10 s and keyframes every 2 s in every feed. NASA footage and audio,
   # from openmoq/FFmpeg's multi-view demo set. Import the set into
