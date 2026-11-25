@@ -249,7 +249,7 @@ def test_msfts_source_is_encoder_then_pacer(fake_tool, tmp_path, monkeypatch):
     monkeypatch.setattr(
         recipes,
         "pacer_command",
-        lambda src, out: [sys.executable, "-c", pacer, str(src), str(out), str(env)],
+        lambda src, out, spec=None: [sys.executable, "-c", pacer, str(src), str(out), str(env)],
     )
     job = _job(fake_tool, tmp_path, source="mpegts", **TS_CHANGES)
     _, _, logs = _collect(job, stop_after=0.2)

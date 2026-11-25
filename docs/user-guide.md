@@ -98,6 +98,7 @@ draft's value.
 | Big Buck Bunny at 1080p30, CMAF | `content=bbb_4k30&h=1080&pkg=cmaf` |
 | Ten minutes, then end | `dur=600` |
 | A 20 Mb/s MPEG-2 contribution TS (MSFTS) | `pkg=msfts&vc=mpeg2&ac=mp2&h=1080&fps=25&tool=moq2ts&mode=namespace` |
+| A 20 Mb/s HEVC contribution TS with s302m, AAC and AC-3 | `content=artemis_launch&pkg=msfts&vc=h265&ac=s302m_aac_ac3&h=1080&fps=59_94&gop=2002&pkts=348&tool=moq2ts&mode=namespace` |
 
 Preview the namespace without starting anything (no token needed):
 

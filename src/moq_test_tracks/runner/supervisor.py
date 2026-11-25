@@ -192,10 +192,16 @@ class Job:
             if self.spec.is_ts:
                 # ffmpeg into a second FIFO, paced out to the tool by tsp.
                 encoded = self._fifo("encoder.ts")
-                argv = recipes.source_command(self.spec, "mpegts", encoded, clip, start_us=start)
+                if recipes.ts_loop(self.spec):
+                    loop = await self._cached_mp4(None)
+                    argv = recipes.ts_mux_command(self.spec, loop, encoded)
+                else:
+                    argv = recipes.source_command(
+                        self.spec, "mpegts", encoded, clip, start_us=start
+                    )
                 self._feeders = [await self._spawn(argv, "ffmpeg.log")]
                 env = {**os.environ, **recipes.PACER_ENV}
-                pacer = recipes.pacer_command(encoded, fifo)
+                pacer = recipes.pacer_command(encoded, fifo, self.spec)
                 self._source = await self._spawn(pacer, "tsp.log", env)
             else:
                 argv = recipes.source_command(self.spec, "mpegts", fifo, clip, start_us=start)

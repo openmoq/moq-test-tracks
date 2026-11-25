@@ -86,13 +86,21 @@ one the service publishes; a namespace you pass in is rewritten to it.
 | `ch` | 7 channels | `mux` | 14 `msfts` TS rate: `8000`, `20000` or `40000` kbps (8000 at 720, 20000 at 1080) |
 | | | `pkts` | 15 `msfts` TS packets per Object: `1`–`348` (7) |
 
-**MSFTS contribution tracks.** Packaging `msfts` with video `mpeg2` and audio
-`mp2` or `none`, at height 720 or 1080, is an MPEG-TS stream at a constant
-rate, null padded, published unmodified as one track through the `moq2ts`
-tool with `mode` `namespace`. The TS rate sets the MPEG-2 video rate: 6500,
-17000 or 36000 kbps. Fields 11 and 13 do not apply (`_`).
+**MSFTS contribution tracks.** Packaging `msfts` with video `mpeg2` or
+`h265`, at height 720 or 1080, is an MPEG-TS stream at a constant rate, null
+padded, published unmodified as one track through the `moq2ts` tool with
+`mode` `namespace`. Audio is `mp2`, `none`, or with `h265` the set
+`s302m_aac_ac3`: three tracks, s302m (24-bit PCM pair), AAC stereo at 256 kb/s
+and AC-3 5.1 at 448 kb/s, with channels `_`. The TS rate sets the video rate:
+6500, 17000 or 36000 kbps for MPEG-2, and 4000, 15700 or 32000 for H.265.
+Fields 11 and 13 do not apply (`_`).
 `openmoq/moq2ts/mtt_00/clock/msfts/mpeg2/1080/25/mp2/2` is the 20 Mb/s track;
-`…/mp2/2/msf/catalog/1000/_/0/_/40000` the 40 Mb/s one. These jobs need an
+`…/mp2/2/msf/catalog/1000/_/0/_/40000` the 40 Mb/s one.
+`…/artemis_launch/msfts/h265/1080/59_94/s302m_aac_ac3/_/msf/catalog/2002/_/0/_/20000/348`
+is laid out as a broadcast contribution feed: HEVC 1080p59.94 with a CRA
+every 2.002 s, the three audio tracks, PSI every 480 ms, a CAT, an SCTE-35
+component in the PMT, and 348 TS packets per Object. Its video is encoded
+once into a cached loop; only the audio is encoded live. These jobs need an
 `unrestricted` or admin token, run at most 24 h (`msfts.max_ttl_s`; a job
 without `ttl_s` gets the smaller of that and the default), and all active
 ones together stay within `msfts.max_total_kbps` (80000) of TS rate; past it

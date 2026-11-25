@@ -31,7 +31,9 @@ FRACTIONAL_RATES = {
     "29_97": Fraction(30000, 1001),
     "59_94": Fraction(60000, 1001),
 }
-AUDIO_CODECS = ("aac", "opus", "mp2", "none")
+# msfts audio set: the program carries one track of each (AUDIO_SET_TRACKS)
+AUDIO_SET = "s302m_aac_ac3"
+AUDIO_CODECS = ("aac", "opus", "mp2", AUDIO_SET, "none")
 INIT_DATA = ("catalog", "track", "object")
 DGRAM = "dgram"
 ONE_TRACK = "1"
@@ -53,14 +55,18 @@ VIDEO_KBPS = {
     2160: 16000,
 }
 AUDIO_KBPS = {"aac": (64, 128), "opus": (32, 64), "mp2": (96, 192)}
+# (codec, channels, kbps) per track of AUDIO_SET; s302m is 24-bit PCM at 48 kHz.
+AUDIO_SET_TRACKS = (("s302m", 2, 2688), ("aac", 2, 256), ("ac3", 6, 448))
 MAX_LADDER = 7
 MAX_VIEWS = 16
 
 AUDIO_SAMPLE_RATE = 48000
-AUDIO_FRAME_SAMPLES = {"aac": 1024, "opus": 960, "mp2": 1152}
+# AUDIO_SET: the span after which its AAC and AC-3 frames both start again
+AUDIO_FRAME_SAMPLES = {"aac": 1024, "opus": 960, "mp2": 1152, AUDIO_SET: 3072}
 
-# MSFTS: total TS rate (null-padded CBR) -> MPEG-2 video rate; default total by height.
+# MSFTS: total TS rate (null-padded CBR) -> video rate by codec; default total by height.
 TS_MUX_KBPS = {8000: 6500, 20000: 17000, 40000: 36000}
+TS_VIDEO_KBPS = {"mpeg2": TS_MUX_KBPS, "h265": {8000: 4000, 20000: 15700, 40000: 32000}}
 TS_DEFAULT_MUX_KBPS = {720: 8000, 1080: 20000}
 TS_GROUP_MS = 1000
 TS_PACKET_BYTES = 188
@@ -69,8 +75,9 @@ TS_MAX_PACKETS = 348  # 65424 B, under moq2ts's default 64 KiB Object
 TS_TRACK = "program-1"
 TS_TIMELINE_TRACK = "program-1.timeline"
 MPEG2_RATES = ("23_976", "24", "25", "29_97", "30", "50", "59_94", "60")
-TS_VIDEO_CODECS = ("mpeg2",)
-TS_AUDIO_CODECS = ("mp2", "none")
+TS_VIDEO_CODECS = ("mpeg2", "h265")
+TS_AUDIO_CODECS = ("mp2", AUDIO_SET, "none")
+TS_ONLY_CODECS = ("mpeg2", "mp2", AUDIO_SET)
 
 REQUIRED = 7  # tuple fields 1-7; fields 8-15 may be omitted from the end
 
@@ -191,19 +198,41 @@ def _default_mux_kbps(values: dict) -> int:
 class Field:
     index: int
     name: str
-    needs: str | None  # "catalog", "video" or "audio": applies only when that track exists
+    # "catalog", "video" or "audio": applies only when that track exists; "channels": audio
+    # other than AUDIO_SET
+    needs: str | None
     parse: Callable[[str], object]
     omitted: Callable[[dict], object] | None = None  # value when left off the end; None: required
     ts: bool | None = None  # True: msfts packaging only; False: never with msfts
 
 
-def applies(field: Field, *, catalog: bool, video: bool, audio: bool, ts: bool = False) -> bool:
+def applies(
+    field: Field,
+    *,
+    catalog: bool,
+    video: bool,
+    audio: bool,
+    ts: bool = False,
+    channels: bool | None = None,
+) -> bool:
     if field.ts is not None and field.ts != ts:
         return False
-    return field.needs is None or {"catalog": catalog, "video": video, "audio": audio}[field.needs]
+    has = {"catalog": catalog, "video": video, "audio": audio}
+    has["channels"] = audio if channels is None else channels
+    return field.needs is None or has[field.needs]
 
 
-_NEEDS = {"catalog": "catalog", "video": "video_codec", "audio": "audio_codec"}  # none: absent
+def has_channels(audio_codec: object) -> bool:
+    return audio_codec not in ("none", AUDIO_SET, None)
+
+
+# The field whose value none means the track is absent
+_NEEDS = {
+    "catalog": "catalog",
+    "video": "video_codec",
+    "audio": "audio_codec",
+    "channels": "audio_codec",
+}
 
 FIELDS = (
     Field(1, "content", None, _content),
@@ -212,7 +241,7 @@ FIELDS = (
     Field(4, "video_height", "video", _int_choices(HEIGHTS)),
     Field(5, "frame_rate", "video", _frame_rate),
     Field(6, "audio_codec", None, _tokens(AUDIO_CODECS)),
-    Field(7, "audio_channels", "audio", _int_choices((1, 2))),
+    Field(7, "audio_channels", "channels", _int_choices((1, 2))),
     Field(8, "catalog", None, _tokens(CATALOGS), lambda v: "msf"),
     Field(9, "init_data", "catalog", _tokens(INIT_DATA), lambda v: "catalog"),
     Field(
@@ -379,7 +408,7 @@ class TrackSpec:
 
     def kbps_at(self, height: int) -> int:
         if self.mux_kbps is not None:
-            return TS_MUX_KBPS[self.mux_kbps]
+            return TS_VIDEO_KBPS[self.video_codec][self.mux_kbps]
         kbps = VIDEO_KBPS[height]
         return kbps * 3 // 2 if self.fps is not None and self.fps > 30 else kbps
 
@@ -392,6 +421,9 @@ class TrackSpec:
 
     @property
     def audio_kbps(self) -> int | None:
+        """All audio tracks together."""
+        if self.audio_codec == AUDIO_SET:
+            return sum(kbps for _, _, kbps in AUDIO_SET_TRACKS)
         if not self.has_audio or self.audio_channels is None:
             return None
         return AUDIO_KBPS[self.audio_codec][self.audio_channels - 1]
@@ -449,7 +481,7 @@ def check(spec: TrackSpec) -> list[FieldError]:
     for field in FIELDS:
         value = tokens[field.name]
         has = dict(catalog=spec.has_catalog, video=spec.has_video, audio=spec.has_audio)
-        if not applies(field, **has, ts=spec.is_ts):
+        if not applies(field, **has, ts=spec.is_ts, channels=has_channels(spec.audio_codec)):
             if value is not None:
                 errors.append(FieldError(field.index, field.name, "must be _ (does not apply)"))
             continue
@@ -514,12 +546,13 @@ def _cross_checks(spec: TrackSpec) -> list[FieldError]:
 
 
 def _ts_checks(spec: TrackSpec) -> list[FieldError]:
-    """msfts carries MPEG-2 video and MP2 audio, and nothing else does."""
+    """msfts carries MPEG-2 or H.265 video and MP2 or AUDIO_SET audio; only msfts carries
+    MPEG-2, MP2 and AUDIO_SET."""
     errors: list[FieldError] = []
     if not spec.is_ts:
-        if spec.video_codec in TS_VIDEO_CODECS:
+        if spec.video_codec in TS_ONLY_CODECS:
             errors.append(FieldError(3, "video_codec", f"{spec.video_codec} requires msfts"))
-        if spec.audio_codec in TS_AUDIO_CODECS and spec.has_audio:
+        if spec.audio_codec in TS_ONLY_CODECS:
             errors.append(FieldError(6, "audio_codec", f"{spec.audio_codec} requires msfts"))
         return errors
     if spec.video_codec not in TS_VIDEO_CODECS:
@@ -531,10 +564,13 @@ def _ts_checks(spec: TrackSpec) -> list[FieldError]:
         errors.append(
             FieldError(6, "audio_codec", f"msfts requires {' or '.join(TS_AUDIO_CODECS)}")
         )
+    elif spec.audio_codec == AUDIO_SET and spec.video_codec != "h265":
+        # With MPEG-2 video the set does not fit the TS rate.
+        errors.append(FieldError(6, "audio_codec", f"{AUDIO_SET} requires h265"))
     if spec.video_height not in TS_DEFAULT_MUX_KBPS:
         heights = " or ".join(map(str, TS_DEFAULT_MUX_KBPS))
         errors.append(FieldError(4, "video_height", f"msfts requires {heights}"))
-    if spec.frame_rate not in MPEG2_RATES:
+    if spec.video_codec == "mpeg2" and spec.frame_rate not in MPEG2_RATES:
         errors.append(
             FieldError(
                 5, "frame_rate", f"MPEG-2 takes {', '.join(MPEG2_RATES)}, not {spec.frame_rate}"

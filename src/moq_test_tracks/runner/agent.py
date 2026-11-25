@@ -28,7 +28,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ..config import Config, job_errors
-from ..content import media
+from ..content import media, recipes
 from ..spec.fields import NamespaceError, TrackSpec
 from ..spec.namespace import Namespace, decode, from_text, render, to_slash
 from .request import build as build_request
@@ -206,6 +206,7 @@ class Registry:
             "path": str(mezz.path),
             "attribution": clip.attribution,
             "loop_s": clip.loop_s,
+            "delogo": list(clip.delogo) if clip.delogo else None,
         }
 
     def _job(self, body, tool, relay, namespace, spec, draft, ttl, clip, work: Path) -> Job:
@@ -425,8 +426,8 @@ class Registry:
 
 def _live_encodes(check: CheckResult, spec: TrackSpec) -> Fraction:
     """A live job's load in 1080p30 encodes: its video tracks' pixel rate, at least
-    LIVE_FLOOR."""
-    if check.source != "mpegts":
+    LIVE_FLOOR. Cached loops, msfts ones included, count nothing."""
+    if check.source != "mpegts" or recipes.ts_loop(spec):
         return Fraction(0)
     pixels = sum(t.width * t.height for t in spec.video_set())
     return max(LIVE_FLOOR, pixels * spec.fps / LIVE_UNIT if pixels else Fraction(0))

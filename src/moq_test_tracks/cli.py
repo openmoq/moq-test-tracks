@@ -62,6 +62,7 @@ def _media_tokens(args: argparse.Namespace) -> list[str]:
         "video": given["video_codec"] != "none",
         "audio": given["audio_codec"] != "none",
         "ts": given["packaging"] == TS,
+        "channels": fields.has_channels(given["audio_codec"]),
     }
     opt_of = {name: opt for opt, name in MEDIA_OPTIONS.items()}
     errors, tokens = [], []
@@ -264,7 +265,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         if mezz is None:
             return _fail([f"clip {cid} is not configured and fetched (mtt media fetch)"])
         c = cfg.clips[cid]
-        clip = {"id": cid, "path": str(mezz.path), "attribution": c.attribution, "loop_s": c.loop_s}
+        clip = {"id": cid, "path": str(mezz.path), "attribution": c.attribution}
+        clip |= {"loop_s": c.loop_s, "delogo": list(c.delogo) if c.delogo else None}
     draft = args.draft or relay.default_draft
     ttl = args.ttl or cfg.policy.default_ttl_s
     if decoded.spec.is_ts and not args.ttl:

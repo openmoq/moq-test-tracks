@@ -13,8 +13,8 @@ capabilities:
   catalog: [msf]
   init_data: [catalog]
   packaging: [msfts]
-  video_codec: [mpeg2]
-  audio_codec: [mp2, none]
+  video_codec: [mpeg2, h265]
+  audio_codec: [mp2, s302m_aac_ac3, none]
   transport: [moqt]
   draft: [14, 16, 18, 22]
   mode: [namespace]  # serves SUBSCRIBE; sends no PUBLISH

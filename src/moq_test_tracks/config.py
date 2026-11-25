@@ -77,6 +77,7 @@ class Clip:
     video: str | None = None
     audio: str | None = None
     loop_s: int | None = None  # loop length; default about LOOP_TARGET_S
+    delogo: tuple[int, int, int, int] | None = None  # x, y, w, h in source pixels
 
 
 @dataclass(frozen=True)
@@ -124,6 +125,7 @@ def _clips(path: Path) -> dict[str, Clip]:
             video=c.get("video"),
             audio=c.get("audio"),
             loop_s=int(c["loop_s"]) if "loop_s" in c else None,
+            delogo=tuple(c["delogo"]) if isinstance(c.get("delogo"), list) else c.get("delogo"),
         )
         problems = []
         if not CLIP_ID.fullmatch(cid):
@@ -137,6 +139,12 @@ def _clips(path: Path) -> dict[str, Clip]:
         for rel in (clip.video, clip.audio):
             if rel is not None and (rel.startswith("/") or ".." in Path(rel).parts):
                 problems.append(f"{rel}: media paths are relative to <var>/media")
+        d = clip.delogo
+        if d is not None and not (
+            isinstance(d, tuple) and len(d) == 4 and all(type(v) is int for v in d)
+            and min(d) >= 0 and 0 not in d[2:]
+        ):  # fmt: skip
+            problems.append("delogo is [x, y, w, h]: x and y 0 or more, w and h 1 or more")
         if clip.loop_s is not None and not 10 <= clip.loop_s <= 600:
             problems.append("loop_s must be 10-600")
         if not 10 <= clip.capture_s <= 600:
